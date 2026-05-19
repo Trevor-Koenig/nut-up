@@ -41,6 +41,9 @@ case "$cmd" in
         show_help
         ;;
     daemon|discover|wake|status)
+        if [[ $EUID -ne 0 ]]; then
+            exec sudo "$0" "$@"
+        fi
         exec /opt/nut-up/bin/nut-up "$@"
         ;;
     *)
