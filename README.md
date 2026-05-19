@@ -9,7 +9,7 @@ Runs on any systemd-based Linux system (Debian, Ubuntu, Fedora, Arch, Raspberry 
 ## Quick Start
 
 ```bash
-git clone https://github.com/youruser/nut-up.git && cd nut-up
+git clone https://github.com/Trevor-Koenig/nut-up.git && cd nut-up
 sudo make install
 sudo nano /etc/nut-up/config.yaml   # set NUT credentials, machines, and any interfaces you want enabled
 sudo systemctl enable --now nut-up
@@ -56,7 +56,7 @@ UNKNOWN ──► ONLINE ──► ON_BATTERY ──► LOW_BATTERY
 ### Step 1 — Clone and install
 
 ```bash
-git clone https://github.com/youruser/nut-up.git
+git clone https://github.com/Trevor-Koenig/nut-up.git
 cd nut-up
 sudo make install
 ```
