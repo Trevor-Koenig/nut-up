@@ -40,4 +40,4 @@ purge: uninstall
 	userdel nut-up 2>/dev/null || true
 	@echo "Purge complete — all nut-up files and the system user have been removed"
 	@echo "Removing repo at $(CURDIR)"
-	@REPO="$(CURDIR)"; cd /tmp && rm -rf "$$REPO"
+	@REPO="$(CURDIR)"; (sleep 1 && rm -rf "$$REPO") &
