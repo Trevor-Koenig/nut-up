@@ -34,6 +34,7 @@ def _wake_ipmi(machine: MachineConfig) -> None:
         "-H", machine.ipmi_host,
         "-U", machine.ipmi_user,
         "-P", machine.ipmi_pass,
+        "-L", "OPERATOR",
         "chassis", "power", "on",
     ]
     try:

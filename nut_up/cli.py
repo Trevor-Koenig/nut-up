@@ -235,6 +235,7 @@ def check(config: str) -> None:
                     "-H", m.ipmi_host,
                     "-U", m.ipmi_user,
                     "-P", m.ipmi_pass,
+                    "-L", "OPERATOR",
                     "chassis", "power", "status",
                 ]
                 try:
