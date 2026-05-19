@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hmac
 import logging
 import time
 from datetime import datetime, timezone
@@ -46,8 +47,8 @@ def create_web(app_state) -> FastAPI:
                 decoded = base64.b64decode(auth[6:]).decode("utf-8")
                 username, _, password = decoded.partition(":")
                 if (
-                    username == app_state.config.web.username
-                    and password == app_state.config.web.password
+                    hmac.compare_digest(username, app_state.config.web.username)
+                    and hmac.compare_digest(password, app_state.config.web.password)
                 ):
                     return
             except Exception:

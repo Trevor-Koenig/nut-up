@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import socket
+import ssl
 import subprocess
 import sys
 import urllib.error
@@ -110,15 +112,21 @@ def wake(name: str, config: str) -> None:
 
     if cfg.api.api_key is not None:
         host = "localhost" if cfg.api.host == "0.0.0.0" else cfg.api.host
-        base_url = f"http://{host}:{cfg.api.port}"
+        scheme = "https" if cfg.api.tls_cert else "http"
+        base_url = f"{scheme}://{host}:{cfg.api.port}"
         path = "/api/wake/all" if name == "all" else f"/api/wake/{name}"
+        ssl_ctx = None
+        if cfg.api.tls_cert:
+            ssl_ctx = ssl.create_default_context()
+            ssl_ctx.load_verify_locations(cfg.api.tls_cert)
+            ssl_ctx.check_hostname = False
         try:
             req = urllib.request.Request(
                 f"{base_url}{path}",
                 method="POST",
                 headers={"X-API-Key": cfg.api.api_key},
             )
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            with urllib.request.urlopen(req, timeout=5, context=ssl_ctx) as resp:
                 data = json.loads(resp.read().decode())
             click.echo(f"Wake sent via daemon: {data}")
             return
@@ -153,14 +161,20 @@ def status(config: str) -> None:
         sys.exit(1)
 
     host = "localhost" if cfg.api.host == "0.0.0.0" else cfg.api.host
-    base_url = f"http://{host}:{cfg.api.port}"
+    scheme = "https" if cfg.api.tls_cert else "http"
+    base_url = f"{scheme}://{host}:{cfg.api.port}"
+    ssl_ctx = None
+    if cfg.api.tls_cert:
+        ssl_ctx = ssl.create_default_context()
+        ssl_ctx.load_verify_locations(cfg.api.tls_cert)
+        ssl_ctx.check_hostname = False
 
     try:
         req = urllib.request.Request(
             f"{base_url}/api/status",
             headers={"X-API-Key": cfg.api.api_key},
         )
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        with urllib.request.urlopen(req, timeout=5, context=ssl_ctx) as resp:
             data = json.loads(resp.read().decode())
     except Exception as e:
         click.echo(f"Cannot reach daemon at {base_url}: {e}", err=True)
@@ -234,12 +248,13 @@ def check(config: str) -> None:
                     "ipmitool", "-I", "lanplus",
                     "-H", m.ipmi_host,
                     "-U", m.ipmi_user,
-                    "-P", m.ipmi_pass,
+                    "-E",
                     "-L", "OPERATOR",
                     "chassis", "power", "status",
                 ]
+                env = {**os.environ, "IPMI_PASSWORD": m.ipmi_pass}
                 try:
-                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=15, env=env)
                     if result.returncode == 0:
                         click.echo(f"    {result.stdout.strip()}  OK")
                     else:

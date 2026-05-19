@@ -33,7 +33,7 @@ show_help() {
 case "$cmd" in
     install|update|test|uninstall|purge)
         if [[ $EUID -ne 0 ]]; then
-            exec sudo "$0" "$@"
+            exec sudo "$0" "$cmd"
         fi
         exec make -C "$REPO" "$cmd"
         ;;
@@ -41,8 +41,8 @@ case "$cmd" in
         show_help
         ;;
     daemon|discover|wake|status)
-        if [[ $EUID -ne 0 ]]; then
-            exec sudo "$0" "$@"
+        if [[ "$(id -un)" != "nut-up" ]]; then
+            exec sudo -u nut-up /opt/nut-up/bin/nut-up "$@"
         fi
         exec /opt/nut-up/bin/nut-up "$@"
         ;;

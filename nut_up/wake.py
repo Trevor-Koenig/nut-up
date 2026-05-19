@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 
 import wakeonlan
@@ -33,12 +34,13 @@ def _wake_ipmi(machine: MachineConfig) -> None:
         "ipmitool", "-I", "lanplus",
         "-H", machine.ipmi_host,
         "-U", machine.ipmi_user,
-        "-P", machine.ipmi_pass,
+        "-E",
         "-L", "OPERATOR",
         "chassis", "power", "on",
     ]
+    env = {**os.environ, "IPMI_PASSWORD": machine.ipmi_pass}
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15, env=env)
     except FileNotFoundError:
         raise WakeError("ipmitool not found — run: apt install ipmitool")
     except subprocess.TimeoutExpired:

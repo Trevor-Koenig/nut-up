@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import logging
 from datetime import datetime, timezone
 
@@ -44,7 +45,7 @@ def create_api(app_state, *, api_enabled: bool = True) -> FastAPI:
     if api_enabled:
         def _check_api_key(request: Request) -> None:
             key = request.headers.get("X-API-Key", "")
-            if key != app_state.config.api.api_key:
+            if not hmac.compare_digest(key, app_state.config.api.api_key):
                 host = request.client.host if request.client else "unknown"
                 logger.warning("API auth failure from %s", host)
                 raise HTTPException(status_code=401, detail="Invalid or missing X-API-Key")

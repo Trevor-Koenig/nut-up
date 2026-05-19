@@ -37,6 +37,10 @@ install: ## Install nut-up (venv, systemd service, config template)
 	systemctl enable nut-up
 	sed 's|^REPO=.*|REPO="$(CURDIR)"|' nutup > /usr/local/bin/nutup
 	chmod +x /usr/local/bin/nutup
+	@if [ -n "$$SUDO_USER" ] && [ "$$SUDO_USER" != "root" ]; then \
+	  echo "$$SUDO_USER ALL=(nut-up) NOPASSWD: $(BIN)" > /etc/sudoers.d/nut-up-runtime; \
+	  chmod 440 /etc/sudoers.d/nut-up-runtime; \
+	fi
 	@echo ""
 	@echo "Installed. Edit $(CONFFILE) then run: sudo systemctl enable --now nut-up"
 	@echo "You can now run 'nutup <command>' from anywhere."
@@ -65,6 +69,10 @@ update: ## Pull latest changes, reinstall package, and restart the service
 	systemctl daemon-reload
 	systemctl restart nut-up
 	@systemctl is-active --quiet nut-up && echo "nut-up restarted successfully" || (echo "ERROR: nut-up failed to start — check: journalctl -u nut-up -n 30"; exit 1)
+	@if [ -n "$$SUDO_USER" ] && [ "$$SUDO_USER" != "root" ]; then \
+	  echo "$$SUDO_USER ALL=(nut-up) NOPASSWD: $(BIN)" > /etc/sudoers.d/nut-up-runtime; \
+	  chmod 440 /etc/sudoers.d/nut-up-runtime; \
+	fi
 
 test: ## Check NUT server connectivity, credentials, and IPMI BMC access
 	$(BIN) check --config $(CONFFILE)
@@ -74,6 +82,7 @@ uninstall: ## Stop and disable service, remove venv and unit file (config kept)
 	rm -f $(SVCFILE)
 	rm -rf $(VENV)
 	rm -f /usr/local/bin/nutup
+	rm -f /etc/sudoers.d/nut-up-runtime
 	systemctl daemon-reload
 	@echo "Config left at $(CONFDIR) — remove manually if desired"
 
