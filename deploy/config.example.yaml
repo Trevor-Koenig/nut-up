@@ -1,0 +1,41 @@
+nut:
+  host: localhost
+  port: 3493
+  ups_names:
+    - ups                   # list — add more entries for multiple UPS devices on the same upsd
+  username: monuser
+  password: secret
+
+api:
+  host: 0.0.0.0
+  port: 8765
+  api_key: "changeme"       # REQUIRED: change before starting — used in X-API-Key header by HA
+
+web:
+  username: "admin"
+  password: "changeme"      # REQUIRED: change before starting — HTTP Basic Auth for the browser UI
+
+wake_delay_seconds: 30      # seconds to wait after power restored before sending wake signals
+
+machines:
+  - name: truenas
+    mac: "AA:BB:CC:DD:EE:FF"
+    ip: "192.168.1.10"
+    broadcast: "192.168.1.255"  # optional; defaults to 255.255.255.255
+    wake_method: wol
+    # ups: ups              # optional — tie machine to a specific UPS; omit to wake on any
+
+  - name: proxmox
+    mac: "11:22:33:44:55:66"
+    ip: "192.168.1.20"
+    wake_method: wol
+
+  # IPMI example (requires: apt install ipmitool)
+  # Use a dedicated IPMI user with Operator or Power User role — do NOT use root.
+  # - name: dell-server
+  #   ip: "192.168.1.30"
+  #   mac: "AA:BB:CC:DD:EE:01"   # not used for ipmi wake; kept for inventory
+  #   wake_method: ipmi
+  #   ipmi_host: "192.168.1.31"  # iDRAC / BMC IP
+  #   ipmi_user: "nut-up-power"  # Operator/Power User role only
+  #   ipmi_pass: "secret"

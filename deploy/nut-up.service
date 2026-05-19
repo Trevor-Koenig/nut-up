@@ -1,0 +1,18 @@
+[Unit]
+Description=nut-up — NUT power-restore wake daemon
+After=network.target nut-server.service
+Wants=nut-server.service
+
+[Service]
+Type=simple
+User=nut-up
+Group=nut-up
+ExecStart=/opt/nut-up/bin/nut-up daemon
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nut-up
+
+[Install]
+WantedBy=multi-user.target

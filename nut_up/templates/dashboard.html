@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<div id="status"
+     hx-get="/partials/status"
+     hx-trigger="every 15s"
+     hx-swap="innerHTML">
+  {% include "partials/status.html" %}
+</div>
+{% endblock %}

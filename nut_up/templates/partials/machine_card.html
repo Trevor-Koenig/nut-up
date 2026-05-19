@@ -1,0 +1,21 @@
+<article id="machine-{{ machine.name }}">
+  <header>
+    <strong>{{ machine.name }}</strong>
+    <span style="float:right; font-weight:normal; color: var(--pico-muted-color)">{{ machine.ip }}</span>
+  </header>
+  <div style="display:flex; justify-content:space-between; align-items:center">
+    <span>
+      {% if machine.online %}
+        &#x25CF; Online
+      {% else %}
+        &#x25CB; Offline
+      {% endif %}
+    </span>
+    <button hx-post="/wake/{{ machine.name }}"
+            hx-target="#machine-{{ machine.name }}"
+            style="margin:0">Wake</button>
+  </div>
+  {% if wake_error %}
+  <p><mark>Wake error: {{ wake_error }}</mark></p>
+  {% endif %}
+</article>

@@ -1,0 +1,33 @@
+{% for ups in ups_list %}
+<article>
+  <header>
+    <strong>UPS: {{ ups.name }}</strong>
+  </header>
+  <p>
+    {% if ups.state == "ONLINE" %}
+      &#x25CF; ONLINE
+    {% elif ups.state == "ON_BATTERY" %}
+      &#x26A0; ON BATTERY
+    {% elif ups.state == "LOW_BATTERY" %}
+      &#x26A0; LOW BATTERY
+    {% elif ups.state == "RESTORING" %}
+      &#x21BA; RESTORING
+    {% else %}
+      ? UNKNOWN
+    {% endif %}
+    &nbsp;&bull;&nbsp; <code>{{ ups.raw_status }}</code>
+  </p>
+  {% if ups.state == "RESTORING" and ups.restoring_countdown is not none %}
+  <p><em>Wake in progress &mdash; machines waking in ~{{ ups.restoring_countdown }}s</em></p>
+  {% endif %}
+</article>
+{% endfor %}
+
+{% for machine in machines %}
+{% set wake_error = none %}
+{% include "partials/machine_card.html" %}
+{% endfor %}
+
+{% if machine_states_updated %}
+<small>Machine states as of {{ machine_states_updated }}</small>
+{% endif %}
