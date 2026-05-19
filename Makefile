@@ -34,9 +34,15 @@ install: ## Install nut-up (venv, systemd service, config template)
 	@echo "You can now run 'nutup <command>' from anywhere."
 
 update: ## Pull latest changes, reinstall package, and restart the service
+	@test -x $(VENV)/bin/pip || (echo "nut-up is not installed — run: sudo make install"; exit 1)
 	git pull
 	$(VENV)/bin/pip install --quiet .
+	sed 's|^REPO=.*|REPO="$(CURDIR)"|' nutup > /usr/local/bin/nutup
+	chmod +x /usr/local/bin/nutup
+	cp deploy/nut-up.service $(SVCFILE)
+	systemctl daemon-reload
 	systemctl restart nut-up
+	@systemctl is-active --quiet nut-up && echo "nut-up restarted successfully" || (echo "ERROR: nut-up failed to start — check: journalctl -u nut-up -n 30"; exit 1)
 
 test: ## Check NUT server connectivity, credentials, and IPMI BMC access
 	$(BIN) check --config $(CONFFILE)
