@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Management CLI for nut-up.
+# First install: sudo ./nutup install
+# After install: nutup <command> from anywhere
+set -e
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+cmd="${1:-help}"
+
+if [[ ! -f "$REPO/Makefile" ]]; then
+    echo "nutup: repository not found at $REPO" >&2
+    echo "Re-clone the repository and run: sudo ./nutup install" >&2
+    exit 1
+fi
+
+case "$cmd" in
+    install|update|test|uninstall|purge|help)
+        exec make -C "$REPO" "$cmd"
+        ;;
+    *)
+        echo "nutup: unknown command '${cmd}'" >&2
+        make -C "$REPO" help >&2
+        exit 1
+        ;;
+esac

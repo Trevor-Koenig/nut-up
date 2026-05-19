@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import socket
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -184,3 +185,82 @@ def status(config: str) -> None:
 
     updated = data.get("machine_states_updated") or "N/A"
     click.echo(f"\nMachine states as of: {updated}")
+
+
+@main.command()
+@click.option("--config", default=DEFAULT_CONFIG, show_default=True, help="Path to config file")
+def check(config: str) -> None:
+    """Check NUT server connectivity, credentials, and IPMI BMC access."""
+    all_ok = True
+
+    click.echo("Checking configuration...")
+    try:
+        cfg = load_config(config)
+        click.echo(f"  {config}  OK")
+    except ConfigError as e:
+        click.echo(f"  {e}  FAIL", err=True)
+        sys.exit(1)
+
+    click.echo(f"\nChecking NUT server ({cfg.nut.host}:{cfg.nut.port})...")
+    from .nut import NutAuthError, NutClient, NutConnectionError, NutError
+
+    try:
+        with NutClient(
+            cfg.nut.host,
+            cfg.nut.port,
+            cfg.nut.username,
+            cfg.nut.password,
+            cfg.nut.ups_names,
+        ) as client:
+            statuses = client.get_all_statuses()
+        for ups_name, raw_status in statuses.items():
+            click.echo(f"  {ups_name}: {raw_status!r}  OK")
+    except NutAuthError as e:
+        click.echo(f"  Auth failed: {e}  FAIL", err=True)
+        all_ok = False
+    except NutConnectionError as e:
+        click.echo(f"  Connection failed: {e}  FAIL", err=True)
+        all_ok = False
+    except NutError as e:
+        click.echo(f"  NUT error: {e}  FAIL", err=True)
+        all_ok = False
+
+    if cfg.machines:
+        click.echo("\nChecking machines...")
+        for m in cfg.machines:
+            if m.wake_method == "ipmi":
+                click.echo(f"  {m.name} (ipmi) — querying chassis power status...")
+                cmd = [
+                    "ipmitool", "-I", "lanplus",
+                    "-H", m.ipmi_host,
+                    "-U", m.ipmi_user,
+                    "-P", m.ipmi_pass,
+                    "chassis", "power", "status",
+                ]
+                try:
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+                    if result.returncode == 0:
+                        click.echo(f"    {result.stdout.strip()}  OK")
+                    else:
+                        click.echo(
+                            f"    exit {result.returncode}: {result.stderr.strip()}  FAIL",
+                            err=True,
+                        )
+                        all_ok = False
+                except FileNotFoundError:
+                    click.echo(
+                        "    ipmitool not found — run: apt install ipmitool  FAIL", err=True
+                    )
+                    all_ok = False
+                except subprocess.TimeoutExpired:
+                    click.echo("    ipmitool timed out  FAIL", err=True)
+                    all_ok = False
+            else:
+                click.echo(f"  {m.name} (wol) — WoL is fire-and-forget, no pre-flight check")
+
+    click.echo()
+    if all_ok:
+        click.echo("All checks passed.")
+    else:
+        click.echo("Some checks failed.", err=True)
+        sys.exit(1)

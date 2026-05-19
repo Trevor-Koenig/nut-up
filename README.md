@@ -10,10 +10,18 @@ Runs on any systemd-based Linux system (Debian, Ubuntu, Fedora, Arch, Raspberry 
 
 ```bash
 git clone https://github.com/Trevor-Koenig/nut-up.git && cd nut-up
-sudo make install
+sudo ./nutup install
 sudo nano /etc/nut-up/config.yaml   # set NUT credentials, machines, and any interfaces you want enabled
 sudo systemctl enable --now nut-up
 curl http://localhost:8765/health   # should return {"status": "ok"}
+```
+
+After install, the `nutup` command is available system-wide:
+
+```
+nutup              # show available commands
+sudo nutup update  # pull latest changes and restart
+sudo nutup test    # verify NUT and IPMI connectivity
 ```
 
 See [Installation](#installation) and [Configuration](#configuration) below for full details.
@@ -58,10 +66,10 @@ UNKNOWN ──► ONLINE ──► ON_BATTERY ──► LOW_BATTERY
 ```bash
 git clone https://github.com/Trevor-Koenig/nut-up.git
 cd nut-up
-sudo make install
+sudo ./nutup install
 ```
 
-`make install` creates a `nut-up` system user, sets up a virtualenv at `/opt/nut-up/`, copies the example config to `/etc/nut-up/config.yaml`, and installs the systemd unit.
+`nutup install` creates a `nut-up` system user, sets up a virtualenv at `/opt/nut-up/`, copies the example config to `/etc/nut-up/config.yaml`, installs the systemd unit, and makes `nutup` available system-wide at `/usr/local/bin/nutup`.
 
 ### Step 2 — Edit the config
 
@@ -74,10 +82,8 @@ At minimum, set:
 - `machines` — the list of machines to wake (see [Configuration](#configuration) below)
 
 Optionally set:
-- `api.api_key` — enables the REST API (used by Home Assistant and the CLI). Omit to disable.
-- `web.password` — enables the browser UI. Omit to disable.
-
-The daemon will refuse to start if either value is set to `changeme`.
+- `api.api_key` — enables the REST API (used by Home Assistant and the CLI). Leave blank to disable.
+- `web.password` — enables the browser UI. Leave blank to disable.
 
 ### Step 3 — Enable and start
 
@@ -98,15 +104,24 @@ sudo journalctl -u nut-up -f       # watch live logs
 ### Updating
 
 ```bash
-git pull
-sudo make update   # reinstalls into the venv and restarts the service
+sudo nutup update   # pulls latest changes, reinstalls into the venv, and restarts the service
 ```
+
+### Checking connectivity
+
+After configuring, verify that nut-up can reach the NUT server and any IPMI BMCs before starting the daemon:
+
+```bash
+sudo nutup test
+```
+
+This connects to `upsd`, authenticates, reads the status of each configured UPS, and runs a read-only IPMI query against any IPMI-configured machines. It exits non-zero if anything fails.
 
 ### Uninstalling
 
 ```bash
-sudo make uninstall   # stops/disables service, removes venv and unit; config is left in place
-sudo make purge       # same as uninstall, plus removes /etc/nut-up/, the nut-up system user, and the repo directory
+sudo nutup uninstall   # stops/disables service, removes venv and unit; config is left in place
+sudo nutup purge       # same as uninstall, plus removes /etc/nut-up/, the nut-up system user, and the repo directory
 ```
 
 ---
@@ -127,11 +142,12 @@ nut:
 api:
   host: 0.0.0.0            # bind address; use 0.0.0.0 to listen on all interfaces
   port: 8765
-  api_key: "your-secret"   # omit or set to null to disable the REST API entirely
+  api_key:                 # set a secret string to enable the REST API; leave blank to disable
+                           # used in X-API-Key header — required for Home Assistant integration
 
 web:
   username: "admin"        # HTTP Basic Auth for the browser UI
-  password: "your-secret"  # omit or set to null to disable the web UI entirely
+  password:                # set a secret string to enable the browser UI; leave blank to disable
 
 wake_delay_seconds: 30     # wait this many seconds after power restore before waking machines
 
@@ -151,6 +167,7 @@ machines:
   # IPMI example — requires: sudo apt install ipmitool
   # - name: dell-server
   #   ip: "192.168.1.30"
+  #   mac: "AA:BB:CC:DD:EE:01"      # not used for ipmi wake; kept for inventory
   #   wake_method: ipmi
   #   ipmi_host: "192.168.1.31"     # iDRAC / BMC IP
   #   ipmi_user: "nut-up-power"     # Operator or Power User role — do NOT use root
@@ -241,11 +258,33 @@ The UI and the REST API are served from the same port. API routes (`/health`, `/
 
 ---
 
-## CLI Reference
+## Management CLI (`nutup`)
+
+After install, `nutup` is available system-wide for managing the deployment:
+
+```bash
+nutup              # show available commands (no sudo needed)
+sudo nutup install # install from the cloned repo
+sudo nutup update  # git pull + reinstall package + restart service
+sudo nutup test    # check NUT connectivity, credentials, and IPMI BMC access
+sudo nutup uninstall  # stop service, remove venv/unit (config kept)
+sudo nutup purge      # remove everything including config and repo
+```
+
+`nutup` can also be run as `sudo make <target>` from the repo directory — both are equivalent.
+
+---
+
+## Application CLI Reference (`nut-up`)
+
+The `nut-up` application binary (installed at `/opt/nut-up/bin/nut-up`) provides runtime commands:
 
 ```bash
 # Start the daemon (normally handled by systemd)
 nut-up daemon [--config /etc/nut-up/config.yaml]
+
+# Check connectivity to the NUT server and any IPMI BMCs (same as nutup test)
+nut-up check
 
 # Discover NUT slave clients via upsd, resolve their MACs from the ARP table,
 # and print ready-to-paste YAML for the machines section of config.yaml
@@ -483,12 +522,16 @@ automation:
 
 ## Troubleshooting
 
+### Connectivity pre-flight
+
+Run `sudo nutup test` after configuring and before starting the daemon. It checks config validity, NUT authentication, UPS name resolution, and IPMI BMC access in one pass and reports pass/fail per check.
+
 ### Daemon won't start
 
 | Symptom | Cause | Fix |
 |---|---|---|
 | `Config error: api.api_key must be changed` | `api_key` or `web.password` is set to `changeme` | Set a real value, or remove the field to disable that interface |
-| `Config error: Config file not found` | Config doesn't exist | Run `sudo make install` or copy `deploy/config.example.yaml` to `/etc/nut-up/config.yaml` |
+| `Config error: Config file not found` | Config doesn't exist | Run `sudo nutup install` or copy `deploy/config.example.yaml` to `/etc/nut-up/config.yaml` |
 | `Config error: invalid MAC address` | Bad MAC in config | Verify MAC with `ip link show` or your router's ARP table |
 
 ### WoL not working
