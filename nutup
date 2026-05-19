@@ -32,7 +32,14 @@ show_help() {
 }
 
 case "$cmd" in
-    install|update|test|lock|uninstall|purge)
+    update)
+        if [[ $EUID -ne 0 ]]; then
+            exec sudo "$0" "$cmd"
+        fi
+        git -C "$REPO" pull
+        exec make -C "$REPO" update
+        ;;
+    install|test|lock|uninstall|purge)
         if [[ $EUID -ne 0 ]]; then
             exec sudo "$0" "$cmd"
         fi

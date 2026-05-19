@@ -272,7 +272,7 @@ After install, `nutup` is the single entry point for all nut-up operations. All 
 
 ```bash
 nutup install    # install from the cloned repo (first-time only)
-nutup update     # git pull + reinstall package + restart service
+nutup update     # git pull, then reinstall package + restart service using the updated Makefile
 nutup test       # check NUT connectivity, credentials, and IPMI BMC access
 nutup lock       # regenerate requirements.lock from the installed venv (see Security Notes)
 nutup uninstall  # stop service, remove venv/unit (config kept)

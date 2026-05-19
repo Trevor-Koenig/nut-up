@@ -51,9 +51,8 @@ install: ## Install nut-up (venv, systemd service, config template)
 	@echo "Installed. Edit $(CONFFILE) then run: sudo systemctl enable --now nut-up"
 	@echo "You can now run 'nutup <command>' from anywhere."
 
-update: ## Pull latest changes, reinstall package, and restart the service
+update: ## Reinstall package and restart the service (nutup update runs git pull first)
 	@test -x $(VENV)/bin/pip || (echo "nut-up is not installed — run: sudo make install"; exit 1)
-	git pull
 	@if [ -f requirements.lock ]; then \
 	  echo "Installing pinned dependencies from requirements.lock..."; \
 	  $(VENV)/bin/pip install --quiet -r requirements.lock; \
@@ -64,16 +63,18 @@ update: ## Pull latest changes, reinstall package, and restart the service
 	@if [ ! -f $(TLSDIR)/cert.pem ]; then \
 	  echo "Generating self-signed TLS certificate..."; \
 	  mkdir -p $(TLSDIR); \
+	  chmod 750 $(TLSDIR); \
 	  openssl req -x509 -newkey rsa:4096 -days 3650 -nodes -quiet \
 	    -keyout $(TLSDIR)/key.pem -out $(TLSDIR)/cert.pem \
 	    -subj "/CN=$$(hostname)"; \
-	  chown nut-up:nut-up $(TLSDIR)/key.pem $(TLSDIR)/cert.pem; \
-	  chmod 600 $(TLSDIR)/key.pem; \
-	  chmod 640 $(TLSDIR)/cert.pem; \
-	  chmod 750 $(TLSDIR); \
 	  echo "  To enable HTTPS, add to $(CONFFILE):"; \
 	  echo "    tls_cert: $(TLSDIR)/cert.pem"; \
 	  echo "    tls_key:  $(TLSDIR)/key.pem"; \
+	fi
+	@if [ -f $(TLSDIR)/cert.pem ]; then \
+	  chown nut-up:nut-up $(TLSDIR)/cert.pem $(TLSDIR)/key.pem; \
+	  chmod 640 $(TLSDIR)/cert.pem; \
+	  chmod 600 $(TLSDIR)/key.pem; \
 	fi
 	sed 's|^REPO=.*|REPO="$(CURDIR)"|' nutup > /usr/local/bin/nutup
 	chmod +x /usr/local/bin/nutup
