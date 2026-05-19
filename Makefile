@@ -22,7 +22,7 @@ install:
 	systemctl daemon-reload
 	systemctl enable nut-up
 	@echo ""
-	@echo "Installed. Edit $(CONFFILE) then run: systemctl start nut-up"
+	@echo "Installed. Edit $(CONFFILE) then run: sudo systemctl enable --now nut-up"
 
 update:
 	$(VENV)/bin/pip install --quiet .

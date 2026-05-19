@@ -9,11 +9,13 @@ nut:
 api:
   host: 0.0.0.0
   port: 8765
-  api_key: "changeme"       # REQUIRED: change before starting — used in X-API-Key header by HA
+  api_key:                   # set a secret string to enable the REST API; leave blank to disable
+                             # used in X-API-Key header — required for Home Assistant integration
 
 web:
   username: "admin"
-  password: "changeme"      # REQUIRED: change before starting — HTTP Basic Auth for the browser UI
+  password:                  # set a secret string to enable the browser UI; leave blank to disable
+                             # HTTP Basic Auth
 
 wake_delay_seconds: 30      # seconds to wait after power restored before sending wake signals
 
