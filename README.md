@@ -183,7 +183,7 @@ machines:
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `nut.host` | string | `localhost` | Hostname or IP of `upsd` |
+| `nut.host` | string | `localhost` | Hostname or IP of `upsd`. Prefer an IP — a hostname requires DNS, which may itself be unreachable just after a power event if the LAN DNS server was on the same circuit. |
 | `nut.port` | integer | `3493` | `upsd` port |
 | `nut.ups_names` | list | `[ups]` | UPS device names as defined in `ups.conf`; list multiple for multi-UPS setups |
 | `nut.username` | string | `""` | NUT username from `upsd.users` |
@@ -201,7 +201,7 @@ machines:
 | `machines[].broadcast` | string | `255.255.255.255` | Broadcast address for WoL magic packet. Set to subnet broadcast (e.g. `192.168.1.255`) if the default doesn't reach the machine. |
 | `machines[].wake_method` | string | `wol` | `wol` or `ipmi` |
 | `machines[].ups` | string | `null` | Tie this machine to a specific UPS name. If omitted, it wakes on any UPS power-restore event. |
-| `machines[].ipmi_host` | string | — | BMC/iDRAC IP. Required if `wake_method` is `ipmi`. |
+| `machines[].ipmi_host` | string | — | BMC/iDRAC IP. Required if `wake_method` is `ipmi`. Prefer an IP for the same reason as `nut.host`. |
 | `machines[].ipmi_user` | string | — | IPMI username. Required if `wake_method` is `ipmi`. |
 | `machines[].ipmi_pass` | string | — | IPMI password. Required if `wake_method` is `ipmi`. |
 
@@ -583,5 +583,5 @@ sudo journalctl -u nut-up -n 100      # last 100 lines
 - For IPMI machines, create a dedicated BMC user with **Operator** role — do not use the root/Administrator account. nut-up explicitly requests Operator-level sessions (`-L OPERATOR`), so Administrator privileges are neither required nor used. An Operator account can power on/off but cannot modify BMC configuration.
 - By default the web UI and API share a port. Set `web.port` to a different value to run them on separate ports — this lets you firewall the web UI independently while keeping the API accessible to Home Assistant.
 - API documentation endpoints (`/docs`, `/redoc`, `/openapi.json`) are disabled.
-- **Supply chain.** Direct dependencies in `pyproject.toml` are capped with upper bounds so a future major-version release can't land on `nutup update` without a deliberate bump. For full transitive-dep pinning, run `sudo nutup lock` once on the install host — this writes `requirements.lock` from the installed venv. Commit the file, and both `install` and `update` will prefer it over a live PyPI resolution from then on. CDN assets (Pico CSS, HTMX) are pinned to exact versions and verified by their `integrity` (SRI) hashes; the browser fails closed if the asset bytes don't match.
+- **Supply chain.** Direct dependencies in `pyproject.toml` are capped with upper bounds so a future major-version release can't land on `nutup update` without a deliberate bump. For full transitive-dep pinning, run `sudo nutup lock` once on the install host — this writes `requirements.lock` from the installed venv. Commit the file, and both `install` and `update` will prefer it over a live PyPI resolution from then on. Frontend assets (Pico CSS, HTMX) are vendored under `nut_up/static/` and served same-origin, so the dashboard renders during an internet outage and there are no third-party CDNs in the page load path.
 - **Config validation.** The config loader rejects UPS names containing whitespace or special characters, IP/broadcast values that aren't real IPs, and IPMI hostnames starting with `-`. This is defence-in-depth so that a malformed config can't smuggle extra arguments into the NUT protocol or into `ping`/`ipmitool` argv.

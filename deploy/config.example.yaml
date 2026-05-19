@@ -1,5 +1,7 @@
 nut:
-  host: localhost
+  host: localhost            # prefer an IP for nut.host and ipmi_host: if your LAN DNS
+                             # server was on the same dead circuit as the UPS, hostname
+                             # lookups can hang on the first poll after power is restored
   port: 3493
   ups_names:
     - ups                   # list — add more entries for multiple UPS devices on the same upsd

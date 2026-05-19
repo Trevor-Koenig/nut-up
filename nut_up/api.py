@@ -10,14 +10,7 @@ from .wake import WakeError, wake_machine
 
 logger = logging.getLogger("nut_up")
 
-_PICO_URL = "https://cdn.jsdelivr.net/npm/@picocss/pico@2.1.1/css/pico.min.css"
-_HTMX_URL = "https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"
-
-_CSP = (
-    "default-src 'self'; "
-    f"script-src {_HTMX_URL}; "
-    f"style-src {_PICO_URL}"
-)
+_CSP = "default-src 'self'"
 
 
 def _utc_iso(ts: float | None) -> str | None:

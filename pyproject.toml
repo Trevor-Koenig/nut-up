@@ -27,7 +27,7 @@ nut-up = "nut_up.cli:main"
 where = ["."]
 
 [tool.setuptools.package-data]
-nut_up = ["templates/*.html", "templates/partials/*.html"]
+nut_up = ["templates/*.html", "templates/partials/*.html", "static/*"]
 
 [tool.ruff]
 line-length = 100

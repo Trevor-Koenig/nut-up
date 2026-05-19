@@ -9,6 +9,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .wake import WakeError, wake_machine
@@ -16,19 +17,14 @@ from .wake import WakeError, wake_machine
 logger = logging.getLogger("nut_up")
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
+_STATIC_DIR = Path(__file__).parent / "static"
 
-_PICO_URL = "https://cdn.jsdelivr.net/npm/@picocss/pico@2.1.1/css/pico.min.css"
-_HTMX_URL = "https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"
-
-_CSP = (
-    "default-src 'self'; "
-    f"script-src {_HTMX_URL}; "
-    f"style-src {_PICO_URL}"
-)
+_CSP = "default-src 'self'"
 
 
 def create_web(app_state) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+    app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
     templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
     @app.middleware("http")

@@ -79,7 +79,7 @@ deploy/
 - No PyNUT, no Pydantic — minimal footprint
 - `/opt/nut-up/` venv + dedicated `nut-up` system user (no root at runtime)
 - Web app (`create_web`) is mounted onto the API app at `/` by default — both share one uvicorn server on `api.port`; when `web.port` is set, a second uvicorn server runs the web app independently and the mount is skipped
-- Security headers (CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy) added as middleware in both `api.py` and `web.py`; CSP allowlists only the Pico CSS and HTMX CDN URLs
+- Security headers (CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy) added as middleware in both `api.py` and `web.py`; CSP is `default-src 'self'` — all assets (Pico CSS, HTMX) are vendored under `nut_up/static/` and served by FastAPI's `StaticFiles` mount on the web app
 - `AppState.nut_consecutive_failures` counts back-to-back NUT errors; escalates from WARNING to ERROR at 5
 - Web context includes `restoring_countdown` (seconds until wake fires, computed from `wake_delay_seconds - elapsed`)
 - `config.py` exposes `save_config()` for writing back to YAML (comments not preserved)
@@ -87,7 +87,7 @@ deploy/
 - `web.port` (optional) runs the browser UI on a separate port from the API; validation rejects values outside 1–65535 and equal to `api.port`
 - `config.py` strict-validates UPS names (`^[A-Za-z0-9_.-]+$`), machine `ip`/`broadcast` via `ipaddress.ip_address`, and `ipmi_host` against a hostname regex that forbids a leading `-`; rationale is to keep these values un-injectable into the line-based NUT protocol and into argv for `ping`/`ipmitool`
 - `machine.py` passes `--` before `ip` to `ping` as defence-in-depth against argv-flag injection
-- Supply chain: `pyproject.toml` caps direct deps with upper bounds; `make install` / `make update` prefer `requirements.lock` (committed) over PyPI resolution when present; `make lock` (a.k.a. `nutup lock`) regenerates it from the installed venv. Pico CSS and HTMX CDN URLs are pinned to exact versions matching their SRI hashes; bumping either requires recomputing the hash via `curl ... | openssl dgst -sha384 -binary | openssl base64 -A` in [base.html](nut_up/templates/base.html), [api.py](nut_up/api.py), and [web.py](nut_up/web.py) in lockstep
+- Supply chain: `pyproject.toml` caps direct deps with upper bounds; `make install` / `make update` prefer `requirements.lock` (committed) over PyPI resolution when present; `make lock` (a.k.a. `nutup lock`) regenerates it from the installed venv. Pico CSS and HTMX are vendored in [nut_up/static/](nut_up/static/) — to bump either, `curl` the new file in place; no SRI hash to recompute (the asset is same-origin so SRI is omitted)
 - `nut.py._cmd` echoes only the protocol verb (not the full command) in `NutProtocolError`, so a non-auth `ERR` after `PASSWORD <secret>` cannot leak the secret into the journal
 
 See [.claude/starting-plan.md](.claude/starting-plan.md) for full module specs, config schema, API response shapes, and HTMX wiring.
