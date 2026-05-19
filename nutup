@@ -13,6 +13,23 @@ if [[ ! -f "$REPO/Makefile" ]]; then
     exit 1
 fi
 
+show_help() {
+    echo "Usage: nutup <command> [args]"
+    echo ""
+    echo "System commands (require sudo):"
+    echo "  install      Install nut-up (venv, systemd service, config template)"
+    echo "  update       Pull latest changes, reinstall package, and restart the service"
+    echo "  test         Check NUT server connectivity, credentials, and IPMI BMC access"
+    echo "  uninstall    Stop and disable service, remove venv and unit file (config kept)"
+    echo "  purge        Remove everything: config, system user, and this repo"
+    echo ""
+    echo "Runtime commands:"
+    echo "  daemon       Start the poll loop and API/web server"
+    echo "  discover     Discover NUT slave clients and print ready-to-paste config YAML"
+    echo "  wake NAME    Wake a machine by name (or 'all')"
+    echo "  status       Show current UPS and machine status from the running daemon"
+}
+
 case "$cmd" in
     install|update|test|uninstall|purge)
         if [[ $EUID -ne 0 ]]; then
@@ -21,11 +38,15 @@ case "$cmd" in
         exec make -C "$REPO" "$cmd"
         ;;
     help)
-        exec make -C "$REPO" help
+        show_help
+        ;;
+    daemon|discover|wake|status)
+        exec /opt/nut-up/bin/nut-up "$@"
         ;;
     *)
         echo "nutup: unknown command '${cmd}'" >&2
-        make -C "$REPO" help >&2
+        echo "" >&2
+        show_help >&2
         exit 1
         ;;
 esac
