@@ -63,49 +63,18 @@ nut-up/
 
 ### Makefile targets
 
-```makefile
-VENV      = /opt/nut-up
-BIN       = $(VENV)/bin/nut-up
-SVCFILE   = /etc/systemd/system/nut-up.service
-CONFDIR   = /etc/nut-up
-CONFFILE  = $(CONFDIR)/config.yaml
+Targets: `help`, `install`, `update`, `test`, `uninstall`, `purge`. See `Makefile` for current implementation.
 
-install:
-	@which python3 >/dev/null || (echo "python3 required"; exit 1)
-	id -u nut-up >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin nut-up
-	python3 -m venv $(VENV)
-	$(VENV)/bin/pip install --quiet --upgrade pip
-	$(VENV)/bin/pip install --quiet .
-	mkdir -p $(CONFDIR)
-	[ -f $(CONFFILE) ] || cp deploy/config.example.yaml $(CONFFILE)
-	chown -R nut-up:nut-up $(CONFDIR)
-	chmod 750 $(CONFDIR)
-	cp deploy/nut-up.service $(SVCFILE)
-	systemctl daemon-reload
-	systemctl enable nut-up
-	@echo "Installed. Edit $(CONFFILE) then: systemctl start nut-up"
-
-update:
-	$(VENV)/bin/pip install --quiet .
-	systemctl restart nut-up
-
-uninstall:
-	systemctl disable --now nut-up || true
-	rm -f $(SVCFILE)
-	rm -rf $(VENV)
-	systemctl daemon-reload
-	@echo "Config left at $(CONFDIR) — remove manually if desired"
-
-.PHONY: install update uninstall
-```
+The `nutup` shell script in the repo root wraps these targets and is installed to `/usr/local/bin/nutup` by `make install`, with the repo path baked in via `sed`. Users run `sudo ./nutup install` on first install, then `sudo nutup <target>` from anywhere thereafter.
 
 ### Install flow (user runs once)
 
 ```bash
 git clone https://github.com/trevorkoenig4/nut-up
 cd nut-up
-sudo make install
+sudo ./nutup install
 sudo nano /etc/nut-up/config.yaml    # fill in NUT creds, machines, API key
+sudo nutup test                      # verify NUT + IPMI connectivity before starting
 sudo systemctl start nut-up
 sudo journalctl -u nut-up -f
 ```
@@ -113,8 +82,7 @@ sudo journalctl -u nut-up -f
 ### Update flow
 
 ```bash
-git pull
-sudo make update
+sudo nutup update   # git pull + reinstall + restart (from anywhere)
 ```
 
 ### systemd unit (`deploy/nut-up.service`)
@@ -531,8 +499,9 @@ pip install -e .
 nut-up discover
 
 # Pi: full install
-sudo make install
+sudo ./nutup install
 sudo nano /etc/nut-up/config.yaml
+sudo nutup test
 sudo systemctl start nut-up
 sudo journalctl -u nut-up -f
 

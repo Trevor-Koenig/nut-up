@@ -14,8 +14,14 @@ if [[ ! -f "$REPO/Makefile" ]]; then
 fi
 
 case "$cmd" in
-    install|update|test|uninstall|purge|help)
+    install|update|test|uninstall|purge)
+        if [[ $EUID -ne 0 ]]; then
+            exec sudo "$0" "$@"
+        fi
         exec make -C "$REPO" "$cmd"
+        ;;
+    help)
+        exec make -C "$REPO" help
         ;;
     *)
         echo "nutup: unknown command '${cmd}'" >&2
