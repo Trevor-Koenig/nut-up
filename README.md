@@ -1,6 +1,22 @@
 # nut-up
 
-A lightweight Python daemon for Raspberry Pi that monitors a [NUT](https://networkupstools.org/) server and automatically wakes managed machines via Wake-on-LAN or IPMI after utility power is restored. It also exposes a REST API and browser dashboard for manual control and Home Assistant integration.
+A lightweight Python daemon that monitors a [NUT](https://networkupstools.org/) server and automatically wakes managed machines via Wake-on-LAN or IPMI after utility power is restored. It also exposes a REST API and browser dashboard for manual control and Home Assistant integration.
+
+Runs on any systemd-based Linux system (Debian, Ubuntu, Fedora, Arch, Raspberry Pi OS, etc.).
+
+---
+
+## Quick Start
+
+```bash
+git clone https://github.com/youruser/nut-up.git && cd nut-up
+sudo make install
+sudo nano /etc/nut-up/config.yaml   # set your NUT credentials, API key, machines
+sudo systemctl enable --now nut-up
+curl http://localhost:8765/health   # should return {"status": "ok"}
+```
+
+See [Installation](#installation) and [Configuration](#configuration) below for full details.
 
 ---
 
@@ -25,51 +41,66 @@ UNKNOWN ──► ONLINE ──► ON_BATTERY ──► LOW_BATTERY
 
 ## Prerequisites
 
-- **Raspberry Pi OS Bookworm** (Debian 12, Python 3.11). Other systemd-based Linux distributions should work but are untested.
-- **NUT already configured** — `upsd` running on the Pi, slaves using `upsmon` to shut themselves down on battery. nut-up only handles the *restore* side.
-- `python3` and `python3-venv` available (`sudo apt install python3-venv`).
-- `ipmitool` if any machines use IPMI wake: `sudo apt install ipmitool`.
+- **Any systemd-based Linux** (Debian, Ubuntu, Fedora, Arch, Raspberry Pi OS, etc.) with Python 3.10+
+- **NUT already configured** — `upsd` running and reachable, slaves using `upsmon` to shut themselves down on battery. nut-up only handles the *restore* side.
+- `python3` and `python3-venv` — install with your distro's package manager if missing (e.g. `sudo apt install python3-venv` on Debian/Ubuntu)
+- `ipmitool` if any machines use IPMI wake (e.g. `sudo apt install ipmitool` on Debian/Ubuntu)
 - **Network requirements:**
   - WoL: nut-up must be on the same L2 broadcast domain as the target machine, or you must configure a directed broadcast address. WoL packets do not route.
-  - IPMI: the BMC/iDRAC IP must be reachable from the Pi.
+  - IPMI: the BMC/iDRAC IP must be reachable from the host.
 
 ---
 
 ## Installation
 
+### Step 1 — Clone and install
+
 ```bash
-# 1. Clone the repo
 git clone https://github.com/youruser/nut-up.git
 cd nut-up
-
-# 2. Install (creates venv at /opt/nut-up, system user, systemd unit)
 sudo make install
-
-# 3. Edit the config — at minimum change api_key, web.password, nut credentials, and machines
-sudo nano /etc/nut-up/config.yaml
-
-# 4. Start the daemon
-sudo systemctl start nut-up
-
-# 5. Verify
-sudo systemctl status nut-up
-curl http://localhost:8765/health
 ```
 
-The `make install` target:
-- Creates a `nut-up` system user (no login shell, no home directory)
-- Creates a virtualenv at `/opt/nut-up/` and installs the package
-- Copies `deploy/config.example.yaml` to `/etc/nut-up/config.yaml` (only if it doesn't already exist)
-- Sets config ownership to `nut-up:nut-up` with mode `640`
-- Installs and enables the systemd unit
+`make install` creates a `nut-up` system user, sets up a virtualenv at `/opt/nut-up/`, copies the example config to `/etc/nut-up/config.yaml`, and installs the systemd unit.
 
-**Updating after a `git pull`:**
+### Step 2 — Edit the config
 
 ```bash
+sudo nano /etc/nut-up/config.yaml
+```
+
+At minimum, set:
+- `nut.username` / `nut.password` — credentials from `/etc/nut/upsd.users`
+- `api.api_key` — any non-default string; used by the REST API and Home Assistant
+- `web.password` — any non-default string; used for the browser UI login
+- `machines` — the list of machines to wake (see [Configuration](#configuration) below)
+
+The daemon will refuse to start if `api_key` or `web.password` is still set to `changeme`.
+
+### Step 3 — Enable and start
+
+```bash
+sudo systemctl enable --now nut-up
+```
+
+`enable` ensures the daemon starts automatically on boot — important since the whole point of nut-up is to respond to events after an unattended power outage.
+
+### Step 4 — Verify
+
+```bash
+sudo systemctl status nut-up
+curl http://localhost:8765/health   # → {"status": "ok"}
+sudo journalctl -u nut-up -f       # watch live logs
+```
+
+### Updating
+
+```bash
+git pull
 sudo make update   # reinstalls into the venv and restarts the service
 ```
 
-**Uninstalling:**
+### Uninstalling
 
 ```bash
 sudo make uninstall   # stops/disables service, removes venv and unit; config is left in place
@@ -150,11 +181,53 @@ machines:
 
 The daemon refuses to start if `api.api_key` or `web.password` is left as `changeme`.
 
+### Adding a machine
+
+The quickest way to populate the `machines` list is the `discover` command. Run it while the machine is online and connected to NUT as a slave — it queries `upsd` for connected clients, looks up their MACs from the kernel ARP table, and prints ready-to-paste YAML:
+
+```bash
+nut-up discover
+```
+
+If you'd rather add a machine by hand, here's what you need:
+
+**For WoL (`wake_method: wol`):**
+
+| Field | Where to find it |
+|---|---|
+| `name` | Any identifier — used in API URLs, logs, and the UI. No spaces. |
+| `ip` | The machine's LAN IP. Use a static IP or DHCP reservation so it doesn't change. |
+| `mac` | Run `ip link show` on the target machine, or check your router's ARP/DHCP table. Format: `AA:BB:CC:DD:EE:FF`. |
+| `broadcast` | Usually your subnet's broadcast address, e.g. `192.168.1.255`. Only needed if the default `255.255.255.255` doesn't work across VLANs. |
+| `ups` | Optional. The name of a specific UPS from `nut.ups_names`. Omit if the machine should wake on any UPS restore event. |
+
+WoL must also be enabled in the machine's BIOS/UEFI settings. Some NICs also require a per-boot OS-level configuration — if WoL works when triggered manually but not after a full power cut, check your NIC documentation.
+
+**For IPMI (`wake_method: ipmi`):**
+
+| Field | Where to find it |
+|---|---|
+| `ipmi_host` | The BMC/iDRAC/iLO IP address (separate from the host OS IP) |
+| `ipmi_user` | A dedicated IPMI user with **Operator** or **Power User** role. Do not use `root`. |
+| `ipmi_pass` | The IPMI user's password |
+
+IPMI requires `ipmitool` to be installed on the nut-up host. Test the credentials manually before adding to config:
+
+```bash
+ipmitool -I lanplus -H <ipmi_host> -U <ipmi_user> -P <ipmi_pass> power status
+```
+
+**After editing the config, restart the daemon to pick up the changes:**
+
+```bash
+sudo systemctl restart nut-up
+```
+
 ---
 
 ## Web UI
 
-The browser dashboard is served at `http://<pi-ip>:8765/` and requires HTTP Basic Auth (the credentials from `web.username` / `web.password`).
+The browser dashboard is served at `http://<host-ip>:8765/` and requires HTTP Basic Auth (the credentials from `web.username` / `web.password`).
 
 It shows:
 - Current state and raw NUT status for each configured UPS
