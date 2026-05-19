@@ -8,7 +8,7 @@ from .config import MachineConfig
 async def is_online(ip: str, count: int = 1, timeout: int = 2) -> bool:
     try:
         proc = await asyncio.create_subprocess_exec(
-            "ping", "-c", str(count), "-W", str(timeout), ip,
+            "ping", "-c", str(count), "-W", str(timeout), "--", ip,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
         )

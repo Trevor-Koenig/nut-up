@@ -10,7 +10,7 @@ from .wake import WakeError, wake_machine
 
 logger = logging.getLogger("nut_up")
 
-_PICO_URL = "https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css"
+_PICO_URL = "https://cdn.jsdelivr.net/npm/@picocss/pico@2.1.1/css/pico.min.css"
 _HTMX_URL = "https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"
 
 _CSP = (

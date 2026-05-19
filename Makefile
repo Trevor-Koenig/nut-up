@@ -5,7 +5,7 @@ CONFDIR  = /etc/nut-up
 CONFFILE = $(CONFDIR)/config.yaml
 TLSDIR   = $(CONFDIR)/tls
 
-.PHONY: install update uninstall purge test help
+.PHONY: install update uninstall purge test lock help
 
 help: ## Show available targets
 	@echo "Usage: nutup <command>  |  sudo make <target>"
@@ -18,7 +18,13 @@ install: ## Install nut-up (venv, systemd service, config template)
 	id -u nut-up >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin nut-up
 	python3 -m venv $(VENV)
 	$(VENV)/bin/pip install --quiet --upgrade pip
-	$(VENV)/bin/pip install --quiet .
+	@if [ -f requirements.lock ]; then \
+	  echo "Installing pinned dependencies from requirements.lock..."; \
+	  $(VENV)/bin/pip install --quiet -r requirements.lock; \
+	  $(VENV)/bin/pip install --quiet --no-deps .; \
+	else \
+	  $(VENV)/bin/pip install --quiet .; \
+	fi
 	mkdir -p $(CONFDIR) $(TLSDIR)
 	[ -f $(CONFFILE) ] || cp deploy/config.example.yaml $(CONFFILE)
 	chmod 640 $(CONFFILE)
@@ -48,7 +54,13 @@ install: ## Install nut-up (venv, systemd service, config template)
 update: ## Pull latest changes, reinstall package, and restart the service
 	@test -x $(VENV)/bin/pip || (echo "nut-up is not installed — run: sudo make install"; exit 1)
 	git pull
-	$(VENV)/bin/pip install --quiet .
+	@if [ -f requirements.lock ]; then \
+	  echo "Installing pinned dependencies from requirements.lock..."; \
+	  $(VENV)/bin/pip install --quiet -r requirements.lock; \
+	  $(VENV)/bin/pip install --quiet --no-deps .; \
+	else \
+	  $(VENV)/bin/pip install --quiet .; \
+	fi
 	@if [ ! -f $(TLSDIR)/cert.pem ]; then \
 	  echo "Generating self-signed TLS certificate..."; \
 	  mkdir -p $(TLSDIR); \
@@ -76,6 +88,11 @@ update: ## Pull latest changes, reinstall package, and restart the service
 
 test: ## Check NUT server connectivity, credentials, and IPMI BMC access
 	$(BIN) check --config $(CONFFILE)
+
+lock: ## Regenerate requirements.lock from current venv (run after install on the target host)
+	@test -x $(VENV)/bin/pip || (echo "nut-up is not installed — run: sudo make install"; exit 1)
+	$(VENV)/bin/pip freeze --exclude-editable | grep -v '^nut-up==' > $(CURDIR)/requirements.lock
+	@echo "Wrote requirements.lock — commit it to pin transitive dependencies."
 
 uninstall: ## Stop and disable service, remove venv and unit file (config kept)
 	systemctl disable --now nut-up || true

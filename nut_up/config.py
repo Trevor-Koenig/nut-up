@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -60,11 +61,20 @@ class Config:
 
 
 _MAC_RE = re.compile(r"^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
+# NUT UPS device names are restricted to letters, digits, dots, dashes, underscores.
+# Keeps line-based NUT protocol commands free of injectable whitespace/newlines.
+_UPS_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+# Hostnames per RFC 952/1123: letters/digits/dot/dash, must not start with a dash
+# (so the value can never be misread as a CLI flag by ipmitool).
+_HOSTNAME_RE = re.compile(r"^(?!-)[A-Za-z0-9.-]+$")
 
 
 def _validate(cfg: Config) -> None:
     if not cfg.nut.ups_names:
         raise ConfigError("nut.ups_names must not be empty")
+    for name in cfg.nut.ups_names:
+        if not isinstance(name, str) or not _UPS_NAME_RE.match(name):
+            raise ConfigError(f"nut.ups_names: invalid UPS name {name!r}")
 
     for i, m in enumerate(cfg.machines):
         loc = f"machines[{i}] ({m.name!r})"
@@ -72,9 +82,18 @@ def _validate(cfg: Config) -> None:
             raise ConfigError(f"{loc}: name is required")
         if m.wake_method not in ("wol", "ipmi"):
             raise ConfigError(f"{loc}: wake_method must be 'wol' or 'ipmi'")
+        if m.ip:
+            try:
+                ipaddress.ip_address(m.ip)
+            except ValueError:
+                raise ConfigError(f"{loc}: invalid ip address {m.ip!r}")
         if m.wake_method == "wol":
             if not _MAC_RE.match(m.mac or ""):
                 raise ConfigError(f"{loc}: invalid MAC address {m.mac!r}")
+            try:
+                ipaddress.ip_address(m.broadcast)
+            except ValueError:
+                raise ConfigError(f"{loc}: invalid broadcast address {m.broadcast!r}")
         if m.wake_method == "ipmi":
             missing = [
                 f for f in ("ipmi_host", "ipmi_user", "ipmi_pass") if not getattr(m, f)
@@ -83,6 +102,8 @@ def _validate(cfg: Config) -> None:
                 raise ConfigError(
                     f"{loc}: ipmi wake_method requires {', '.join(missing)}"
                 )
+            if m.ipmi_host and not _HOSTNAME_RE.match(m.ipmi_host):
+                raise ConfigError(f"{loc}: invalid ipmi_host {m.ipmi_host!r}")
 
     def _valid_port(p: int) -> bool:
         return 1 <= p <= 65535

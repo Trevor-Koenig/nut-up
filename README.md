@@ -274,6 +274,7 @@ After install, `nutup` is the single entry point for all nut-up operations. All 
 nutup install    # install from the cloned repo (first-time only)
 nutup update     # git pull + reinstall package + restart service
 nutup test       # check NUT connectivity, credentials, and IPMI BMC access
+nutup lock       # regenerate requirements.lock from the installed venv (see Security Notes)
 nutup uninstall  # stop service, remove venv/unit (config kept)
 nutup purge      # remove everything including config and repo
 ```
@@ -531,6 +532,9 @@ Run `sudo nutup test` after configuring and before starting the daemon. It check
 | `Config error: api.api_key must be changed` | `api_key` or `web.password` is set to `changeme` | Set a real value, or remove the field to disable that interface |
 | `Config error: Config file not found` | Config doesn't exist | Run `sudo nutup install` or copy `deploy/config.example.yaml` to `/etc/nut-up/config.yaml` |
 | `Config error: invalid MAC address` | Bad MAC in config | Verify MAC with `ip link show` or your router's ARP table |
+| `Config error: invalid UPS name` | `nut.ups_names` contains whitespace or unusual characters | Use only letters, digits, `.`, `-`, `_` — these are the characters NUT itself accepts in `ups.conf` |
+| `Config error: invalid ip address` / `invalid broadcast address` | `machines[].ip` or `machines[].broadcast` isn't a parseable IPv4/IPv6 address | Fix the value; the config loader validates with Python's `ipaddress` module |
+| `Config error: invalid ipmi_host` | `machines[].ipmi_host` starts with `-` or contains unexpected characters | Use an IP address or a plain hostname for the BMC |
 
 ### WoL not working
 
@@ -579,3 +583,5 @@ sudo journalctl -u nut-up -n 100      # last 100 lines
 - For IPMI machines, create a dedicated BMC user with **Operator** role — do not use the root/Administrator account. nut-up explicitly requests Operator-level sessions (`-L OPERATOR`), so Administrator privileges are neither required nor used. An Operator account can power on/off but cannot modify BMC configuration.
 - By default the web UI and API share a port. Set `web.port` to a different value to run them on separate ports — this lets you firewall the web UI independently while keeping the API accessible to Home Assistant.
 - API documentation endpoints (`/docs`, `/redoc`, `/openapi.json`) are disabled.
+- **Supply chain.** Direct dependencies in `pyproject.toml` are capped with upper bounds so a future major-version release can't land on `nutup update` without a deliberate bump. For full transitive-dep pinning, run `sudo nutup lock` once on the install host — this writes `requirements.lock` from the installed venv. Commit the file, and both `install` and `update` will prefer it over a live PyPI resolution from then on. CDN assets (Pico CSS, HTMX) are pinned to exact versions and verified by their `integrity` (SRI) hashes; the browser fails closed if the asset bytes don't match.
+- **Config validation.** The config loader rejects UPS names containing whitespace or special characters, IP/broadcast values that aren't real IPs, and IPMI hostnames starting with `-`. This is defence-in-depth so that a malformed config can't smuggle extra arguments into the NUT protocol or into `ping`/`ipmitool` argv.

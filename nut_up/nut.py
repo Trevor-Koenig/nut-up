@@ -86,7 +86,9 @@ class NutClient:
             err = resp[4:]
             if any(k in err for k in ("ACCESS-DENIED", "USERNAME", "PASSWORD")):
                 raise NutAuthError(f"Auth error: {err}")
-            raise NutProtocolError(f"NUT error for {command!r}: {err}")
+            # Only echo the verb — arguments may contain the NUT password.
+            verb = command.split(" ", 1)[0]
+            raise NutProtocolError(f"NUT error for {verb}: {err}")
         return resp
 
     def _authenticate(self) -> None:

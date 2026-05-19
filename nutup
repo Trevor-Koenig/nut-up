@@ -20,6 +20,7 @@ show_help() {
     echo "  install      Install nut-up (venv, systemd service, config template)"
     echo "  update       Pull latest changes, reinstall package, and restart the service"
     echo "  test         Check NUT server connectivity, credentials, and IPMI BMC access"
+    echo "  lock         Regenerate requirements.lock from the installed venv"
     echo "  uninstall    Stop and disable service, remove venv and unit file (config kept)"
     echo "  purge        Remove everything: config, system user, and this repo"
     echo ""
@@ -31,7 +32,7 @@ show_help() {
 }
 
 case "$cmd" in
-    install|update|test|uninstall|purge)
+    install|update|test|lock|uninstall|purge)
         if [[ $EUID -ne 0 ]]; then
             exec sudo "$0" "$cmd"
         fi
