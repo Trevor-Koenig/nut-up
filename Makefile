@@ -4,7 +4,7 @@ SVCFILE  = /etc/systemd/system/nut-up.service
 CONFDIR  = /etc/nut-up
 CONFFILE = $(CONFDIR)/config.yaml
 
-.PHONY: install update uninstall
+.PHONY: install update uninstall purge
 
 install:
 	@which python3 >/dev/null || (echo "python3 required"; exit 1)
@@ -34,3 +34,8 @@ uninstall:
 	rm -rf $(VENV)
 	systemctl daemon-reload
 	@echo "Config left at $(CONFDIR) — remove manually if desired"
+
+purge: uninstall
+	rm -rf $(CONFDIR)
+	userdel nut-up 2>/dev/null || true
+	@echo "Purge complete — all nut-up files and the system user have been removed"

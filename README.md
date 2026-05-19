@@ -11,7 +11,7 @@ Runs on any systemd-based Linux system (Debian, Ubuntu, Fedora, Arch, Raspberry 
 ```bash
 git clone https://github.com/youruser/nut-up.git && cd nut-up
 sudo make install
-sudo nano /etc/nut-up/config.yaml   # set your NUT credentials, API key, machines
+sudo nano /etc/nut-up/config.yaml   # set NUT credentials, machines, and any interfaces you want enabled
 sudo systemctl enable --now nut-up
 curl http://localhost:8765/health   # should return {"status": "ok"}
 ```
@@ -71,11 +71,13 @@ sudo nano /etc/nut-up/config.yaml
 
 At minimum, set:
 - `nut.username` / `nut.password` — credentials from `/etc/nut/upsd.users`
-- `api.api_key` — any non-default string; used by the REST API and Home Assistant
-- `web.password` — any non-default string; used for the browser UI login
 - `machines` — the list of machines to wake (see [Configuration](#configuration) below)
 
-The daemon will refuse to start if `api_key` or `web.password` is still set to `changeme`.
+Optionally set:
+- `api.api_key` — enables the REST API (used by Home Assistant and the CLI). Omit to disable.
+- `web.password` — enables the browser UI. Omit to disable.
+
+The daemon will refuse to start if either value is set to `changeme`.
 
 ### Step 3 — Enable and start
 
@@ -104,6 +106,7 @@ sudo make update   # reinstalls into the venv and restarts the service
 
 ```bash
 sudo make uninstall   # stops/disables service, removes venv and unit; config is left in place
+sudo make purge       # same as uninstall, plus removes /etc/nut-up/ and the nut-up system user
 ```
 
 ---
@@ -124,11 +127,11 @@ nut:
 api:
   host: 0.0.0.0            # bind address; use 0.0.0.0 to listen on all interfaces
   port: 8765
-  api_key: "changeme"      # REQUIRED: change this — used in X-API-Key header
+  api_key: "your-secret"   # omit or set to null to disable the REST API entirely
 
 web:
   username: "admin"        # HTTP Basic Auth for the browser UI
-  password: "changeme"     # REQUIRED: change this
+  password: "your-secret"  # omit or set to null to disable the web UI entirely
 
 wake_delay_seconds: 30     # wait this many seconds after power restore before waking machines
 
@@ -165,9 +168,9 @@ machines:
 | `nut.password` | string | `""` | NUT password |
 | `api.host` | string | `0.0.0.0` | Bind address for the HTTP server |
 | `api.port` | integer | `8765` | HTTP port |
-| `api.api_key` | string | — | **Required.** `X-API-Key` value for REST API auth. Must not be `changeme`. |
+| `api.api_key` | string | `null` | `X-API-Key` value for REST API auth. Omit or set to `null` to disable the REST API. Must not be `changeme`. |
 | `web.username` | string | `admin` | HTTP Basic Auth username for the browser UI |
-| `web.password` | string | — | **Required.** HTTP Basic Auth password. Must not be `changeme`. |
+| `web.password` | string | `null` | HTTP Basic Auth password for the browser UI. Omit or set to `null` to disable the web UI. Must not be `changeme`. |
 | `wake_delay_seconds` | integer | `30` | Seconds to wait after power restore before sending wake signals |
 | `machines[].name` | string | — | **Required.** Identifier used in API URLs, logs, and the UI |
 | `machines[].ip` | string | — | **Required.** IP address used for ping-based online checks |
@@ -179,7 +182,7 @@ machines:
 | `machines[].ipmi_user` | string | — | IPMI username. Required if `wake_method` is `ipmi`. |
 | `machines[].ipmi_pass` | string | — | IPMI password. Required if `wake_method` is `ipmi`. |
 
-The daemon refuses to start if `api.api_key` or `web.password` is left as `changeme`.
+Both `api.api_key` and `web.password` are optional. Omitting them (or setting to `null`) disables the respective interface — the daemon still runs the poll loop and wakes machines. The daemon refuses to start if either is set to `changeme`.
 
 ### Adding a machine
 
@@ -484,7 +487,7 @@ automation:
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `Config error: api.api_key must be changed` | Default credentials still set | Edit `/etc/nut-up/config.yaml` and set a real `api_key` and `web.password` |
+| `Config error: api.api_key must be changed` | `api_key` or `web.password` is set to `changeme` | Set a real value, or remove the field to disable that interface |
 | `Config error: Config file not found` | Config doesn't exist | Run `sudo make install` or copy `deploy/config.example.yaml` to `/etc/nut-up/config.yaml` |
 | `Config error: invalid MAC address` | Bad MAC in config | Verify MAC with `ip link show` or your router's ARP table |
 
@@ -524,7 +527,7 @@ sudo journalctl -u nut-up -n 100      # last 100 lines
 
 ## Security Notes
 
-- **Change both `api.api_key` and `web.password` before starting the daemon.** The daemon will refuse to start with the default `changeme` value.
+- **Do not use `changeme` as a credential.** The daemon refuses to start if either `api.api_key` or `web.password` is set to `changeme`. Omit the field entirely to disable the interface instead.
 - The API key is sent in plaintext over HTTP. If nut-up is exposed beyond your local network, put it behind a reverse proxy with TLS.
 - For IPMI machines, create a dedicated BMC user with **Operator** or **Power User** role only — do not use the root/Administrator account. An Operator-role account can power on/off but cannot modify BMC configuration.
 - The web UI and API share a port. There is no way to expose only the API without also exposing the UI; use firewall rules if you need to restrict browser access while allowing HA to reach the API.

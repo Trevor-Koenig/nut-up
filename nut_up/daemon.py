@@ -193,14 +193,22 @@ def run_daemon(cfg: Config) -> None:
     ups_states = {name: UpsState() for name in cfg.nut.ups_names}
     app_state = AppState(ups_states=ups_states, config=cfg)
 
+    api_enabled = cfg.api.api_key is not None
+    web_enabled = cfg.web.password is not None
+
+    if not api_enabled:
+        logger.info("REST API disabled — set api.api_key in config to enable")
+    if not web_enabled:
+        logger.info("Web UI disabled — set web.password in config to enable")
+
     from .api import create_api
     from .web import create_web
 
-    api_app = create_api(app_state)
-    web_app = create_web(app_state)
+    api_app = create_api(app_state, api_enabled=api_enabled)
 
-    # api_app handles /health and /api/*; web_app catches everything else via mount
-    api_app.mount("/", web_app)
+    if web_enabled:
+        web_app = create_web(app_state)
+        api_app.mount("/", web_app)
 
     uv_cfg = uvicorn.Config(
         api_app,

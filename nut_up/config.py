@@ -25,13 +25,13 @@ class NutConfig:
 class ApiConfig:
     host: str = "0.0.0.0"
     port: int = 8765
-    api_key: str = "changeme"
+    api_key: Optional[str] = None  # None = REST API disabled
 
 
 @dataclass
 class WebConfig:
     username: str = "admin"
-    password: str = "changeme"
+    password: Optional[str] = None  # None = web UI disabled
 
 
 @dataclass
@@ -114,14 +114,16 @@ def load_config(path: str | Path) -> Config:
         username=_get(nut_raw, "username", ""),
         password=_get(nut_raw, "password", ""),
     )
+    api_key_raw = _get(api_raw, "api_key", None)
+    web_password_raw = _get(web_raw, "password", None)
     api = ApiConfig(
         host=_get(api_raw, "host", "0.0.0.0"),
         port=int(_get(api_raw, "port", 8765)),
-        api_key=_get(api_raw, "api_key", "changeme"),
+        api_key=api_key_raw or None,
     )
     web = WebConfig(
         username=_get(web_raw, "username", "admin"),
-        password=_get(web_raw, "password", "changeme"),
+        password=web_password_raw or None,
     )
 
     machines = []
