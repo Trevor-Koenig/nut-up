@@ -108,22 +108,22 @@ def wake(name: str, config: str) -> None:
         click.echo(f"Config error: {e}", err=True)
         sys.exit(1)
 
-    host = "localhost" if cfg.api.host == "0.0.0.0" else cfg.api.host
-    base_url = f"http://{host}:{cfg.api.port}"
-    path = "/api/wake/all" if name == "all" else f"/api/wake/{name}"
-
-    try:
-        req = urllib.request.Request(
-            f"{base_url}{path}",
-            method="POST",
-            headers={"X-API-Key": cfg.api.api_key},
-        )
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read().decode())
-        click.echo(f"Wake sent via daemon: {data}")
-        return
-    except Exception as e:
-        click.echo(f"Daemon unreachable ({e}), trying direct wake...", err=True)
+    if cfg.api.api_key is not None:
+        host = "localhost" if cfg.api.host == "0.0.0.0" else cfg.api.host
+        base_url = f"http://{host}:{cfg.api.port}"
+        path = "/api/wake/all" if name == "all" else f"/api/wake/{name}"
+        try:
+            req = urllib.request.Request(
+                f"{base_url}{path}",
+                method="POST",
+                headers={"X-API-Key": cfg.api.api_key},
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode())
+            click.echo(f"Wake sent via daemon: {data}")
+            return
+        except Exception as e:
+            click.echo(f"Daemon unreachable ({e}), trying direct wake...", err=True)
 
     from .wake import WakeError, wake_machine
 
