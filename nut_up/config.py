@@ -32,6 +32,7 @@ class ApiConfig:
 class WebConfig:
     username: str = "admin"
     password: Optional[str] = None  # None = web UI disabled
+    port: Optional[int] = None  # None = share server with API; set to run on a separate port
 
 
 @dataclass
@@ -81,6 +82,17 @@ def _validate(cfg: Config) -> None:
                     f"{loc}: ipmi wake_method requires {', '.join(missing)}"
                 )
 
+    def _valid_port(p: int) -> bool:
+        return 1 <= p <= 65535
+
+    if not _valid_port(cfg.api.port):
+        raise ConfigError(f"api.port must be 1-65535, got {cfg.api.port}")
+    if cfg.web.port is not None:
+        if not _valid_port(cfg.web.port):
+            raise ConfigError(f"web.port must be 1-65535, got {cfg.web.port}")
+        if cfg.web.port == cfg.api.port:
+            raise ConfigError("web.port must differ from api.port when set explicitly")
+
     # A05 — default credential guard; checked last after structural validation
     if cfg.api.api_key == "changeme":
         raise ConfigError("api.api_key must be changed from the default 'changeme'")
@@ -116,14 +128,19 @@ def load_config(path: str | Path) -> Config:
     )
     api_key_raw = _get(api_raw, "api_key", None)
     web_password_raw = _get(web_raw, "password", None)
+    web_port_raw = _get(web_raw, "port", None)
     api = ApiConfig(
         host=_get(api_raw, "host", "0.0.0.0"),
         port=int(_get(api_raw, "port", 8765)),
         api_key=api_key_raw or None,
     )
+    web_port: Optional[int] = None
+    if web_port_raw is not None:
+        web_port = int(web_port_raw)
     web = WebConfig(
         username=_get(web_raw, "username", "admin"),
         password=web_password_raw or None,
+        port=web_port,
     )
 
     machines = []
@@ -174,6 +191,7 @@ def save_config(config: Config, path: str | Path) -> None:
         "web": {
             "username": config.web.username,
             "password": config.web.password,
+            **({"port": config.web.port} if config.web.port is not None else {}),
         },
         "wake_delay_seconds": config.wake_delay_seconds,
         "machines": [

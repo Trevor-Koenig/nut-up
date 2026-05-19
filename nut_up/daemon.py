@@ -206,7 +206,9 @@ def run_daemon(cfg: Config) -> None:
 
     api_app = create_api(app_state, api_enabled=api_enabled)
 
-    if web_enabled:
+    separate_web_port = web_enabled and cfg.web.port is not None
+
+    if web_enabled and not separate_web_port:
         web_app = create_web(app_state)
         api_app.mount("/", web_app)
 
@@ -219,10 +221,29 @@ def run_daemon(cfg: Config) -> None:
     )
     server = uvicorn.Server(uv_cfg)
 
+    servers = [server]
+
+    if separate_web_port:
+        web_app = create_web(app_state)
+        web_uv_cfg = uvicorn.Config(
+            web_app,
+            host=cfg.api.host,
+            port=cfg.web.port,
+            log_level="info",
+            access_log=True,
+        )
+        servers.append(uvicorn.Server(web_uv_cfg))
+        logger.info(
+            "Web UI running on %s:%d (separate from API on port %d)",
+            cfg.api.host,
+            cfg.web.port,
+            cfg.api.port,
+        )
+
     async def _run() -> None:
         await asyncio.gather(
             _poll_loop(app_state),
-            server.serve(),
+            *[s.serve() for s in servers],
         )
 
     asyncio.run(_run())

@@ -11,11 +11,14 @@ api:
   port: 8765
   api_key:                   # set a secret string to enable the REST API; leave blank to disable
                              # used in X-API-Key header — required for Home Assistant integration
+                             # generate one: openssl rand -base64 32
 
 web:
   username: "admin"
   password:                  # set a secret string to enable the browser UI; leave blank to disable
-                             # HTTP Basic Auth
+                             # HTTP Basic Auth — generate one: openssl rand -base64 32
+  # port: 8766               # optional — run the web UI on a separate port from the API
+                             # when omitted, web UI shares api.port; must differ from api.port if set
 
 wake_delay_seconds: 30      # seconds to wait after power restored before sending wake signals
 

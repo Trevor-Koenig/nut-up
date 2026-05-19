@@ -72,16 +72,17 @@ deploy/
 **Key design facts:**
 - `AppState` dataclass is shared between daemon and API — safe because asyncio is single-threaded
 - Wake fires only when `was_on_battery=True` and outage lasted ≥10s (debounce, hardcoded)
-- `wake_machine()` passes `-L OPERATOR` to ipmitool — avoids auth failure when BMC user lacks ADMINISTRATOR role; OPERATOR is sufficient for `chassis power on`
+- `wake_machine()` passes `-L OPERATOR` to ipmitool — OPERATOR is the required privilege level; ADMINISTRATOR is neither needed nor requested
 - `cli.py` wake command skips daemon API attempt when `api.api_key is None` (avoids NoneType header error); falls straight through to direct wake
 - NUT client is synchronous; bridged into asyncio via `asyncio.to_thread`
 - No PyNUT, no Pydantic — minimal footprint
 - `/opt/nut-up/` venv + dedicated `nut-up` system user (no root at runtime)
-- Web app (`create_web`) is mounted onto the API app at `/`; both share one uvicorn server
+- Web app (`create_web`) is mounted onto the API app at `/` by default — both share one uvicorn server on `api.port`; when `web.port` is set, a second uvicorn server runs the web app independently and the mount is skipped
 - Security headers (CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy) added as middleware in both `api.py` and `web.py`; CSP allowlists only the Pico CSS and HTMX CDN URLs
 - `AppState.nut_consecutive_failures` counts back-to-back NUT errors; escalates from WARNING to ERROR at 5
 - Web context includes `restoring_countdown` (seconds until wake fires, computed from `wake_delay_seconds - elapsed`)
 - `config.py` exposes `save_config()` for writing back to YAML (comments not preserved)
 - `api.api_key = None` disables REST API; `web.password = None` disables browser UI — both checked in `run_daemon`
+- `web.port` (optional) runs the browser UI on a separate port from the API; validation rejects values outside 1–65535 and equal to `api.port`
 
 See [.claude/starting-plan.md](.claude/starting-plan.md) for full module specs, config schema, API response shapes, and HTMX wiring.

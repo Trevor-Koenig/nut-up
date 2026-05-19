@@ -146,10 +146,13 @@ api:
   port: 8765
   api_key:                 # set a secret string to enable the REST API; leave blank to disable
                            # used in X-API-Key header — required for Home Assistant integration
+                           # generate one: openssl rand -base64 32
 
 web:
   username: "admin"        # HTTP Basic Auth for the browser UI
   password:                # set a secret string to enable the browser UI; leave blank to disable
+                           # generate one: openssl rand -base64 32
+  # port: 8766             # optional — serve the web UI on a separate port from the API
 
 wake_delay_seconds: 30     # wait this many seconds after power restore before waking machines
 
@@ -190,6 +193,7 @@ machines:
 | `api.api_key` | string | `null` | `X-API-Key` value for REST API auth. Omit or set to `null` to disable the REST API. Must not be `changeme`. |
 | `web.username` | string | `admin` | HTTP Basic Auth username for the browser UI |
 | `web.password` | string | `null` | HTTP Basic Auth password for the browser UI. Omit or set to `null` to disable the web UI. Must not be `changeme`. |
+| `web.port` | integer | `null` | Port for the browser UI. When omitted, the web UI shares `api.port`. When set, a separate server is started on this port. Must differ from `api.port`. |
 | `wake_delay_seconds` | integer | `30` | Seconds to wait after power restore before sending wake signals |
 | `machines[].name` | string | — | **Required.** Identifier used in API URLs, logs, and the UI |
 | `machines[].ip` | string | — | **Required.** IP address used for ping-based online checks |
@@ -249,14 +253,14 @@ sudo systemctl restart nut-up
 
 ## Web UI
 
-The browser dashboard is served at `http://<host-ip>:8765/` and requires HTTP Basic Auth (the credentials from `web.username` / `web.password`).
+The browser dashboard requires HTTP Basic Auth (the credentials from `web.username` / `web.password`).
 
 It shows:
 - Current state and raw NUT status for each configured UPS
 - Online/offline status and wake method for each machine (auto-refreshes every 15 seconds via HTMX)
 - A **Wake** button per machine that sends the wake signal immediately and updates the card in place
 
-The UI and the REST API are served from the same port. API routes (`/health`, `/api/*`) take priority; the browser UI catches everything else.
+By default, the web UI and REST API share `api.port` (default `8765`). Set `web.port` in the config to run the web UI on its own port — when configured this way, a separate server is started and API routes are not accessible on the web port.
 
 ---
 
@@ -301,7 +305,7 @@ The `discover` command is useful during initial setup: it queries upsd for conne
 
 ## REST API
 
-All REST endpoints are served on the same port as the web UI (default `8765`). API docs are intentionally disabled; endpoints are documented here.
+All REST endpoints are served on `api.port` (default `8765`). API docs are intentionally disabled; endpoints are documented here.
 
 Authentication uses a static API key passed in the `X-API-Key` request header. The `/health` endpoint is unauthenticated.
 
@@ -543,7 +547,6 @@ Run `sudo nutup test` after configuring and before starting the daemon. It check
 |---|---|---|
 | `ipmitool not found` | Not installed | `sudo apt install ipmitool` |
 | `ipmitool timed out` | UDP/623 blocked or BMC LAN disabled | Check firewall allows UDP/623; verify IPMI over LAN is enabled in BMC settings |
-| `Set Session Privilege Level to ADMINISTRATOR failed` | BMC user only has Operator role | This is handled automatically — nut-up requests Operator-level sessions. If the error persists, check the user's role in the BMC. |
 | `ipmitool exited with code 1` | Auth failure or wrong BMC IP | Verify `ipmi_host`, `ipmi_user`, `ipmi_pass`; test with `ipmitool -I lanplus -H <host> -U <user> -P <pass> -L OPERATOR chassis power status` |
 
 ### NUT connection errors
@@ -566,8 +569,13 @@ sudo journalctl -u nut-up -n 100      # last 100 lines
 
 ## Security Notes
 
-- **Do not use `changeme` as a credential.** The daemon refuses to start if either `api.api_key` or `web.password` is set to `changeme`. Omit the field entirely to disable the interface instead.
+- **Use a randomly generated credential.** The daemon refuses to start if either `api.api_key` or `web.password` is set to `changeme`. Omit the field entirely to disable the interface instead. To generate a strong value:
+  ```bash
+  openssl rand -base64 32
+  # or, with no extra dependencies:
+  python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+  ```
 - The API key is sent in plaintext over HTTP. If nut-up is exposed beyond your local network, put it behind a reverse proxy with TLS.
 - For IPMI machines, create a dedicated BMC user with **Operator** role — do not use the root/Administrator account. nut-up explicitly requests Operator-level sessions (`-L OPERATOR`), so Administrator privileges are neither required nor used. An Operator account can power on/off but cannot modify BMC configuration.
-- The web UI and API share a port. There is no way to expose only the API without also exposing the UI; use firewall rules if you need to restrict browser access while allowing HA to reach the API.
+- By default the web UI and API share a port. Set `web.port` to a different value to run them on separate ports — this lets you firewall the web UI independently while keeping the API accessible to Home Assistant.
 - API documentation endpoints (`/docs`, `/redoc`, `/openapi.json`) are disabled.
