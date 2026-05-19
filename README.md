@@ -106,7 +106,7 @@ sudo make update   # reinstalls into the venv and restarts the service
 
 ```bash
 sudo make uninstall   # stops/disables service, removes venv and unit; config is left in place
-sudo make purge       # same as uninstall, plus removes /etc/nut-up/ and the nut-up system user
+sudo make purge       # same as uninstall, plus removes /etc/nut-up/, the nut-up system user, and the repo directory
 ```
 
 ---
