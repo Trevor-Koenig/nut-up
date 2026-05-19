@@ -16,12 +16,14 @@ sudo systemctl enable --now nut-up
 curl http://localhost:8765/health   # should return {"status": "ok"}
 ```
 
-After install, the `nutup` command is available system-wide:
+After install, the `nutup` command is available system-wide. All commands auto-escalate to sudo if needed:
 
 ```
 nutup              # show available commands
-sudo nutup update  # pull latest changes and restart
-sudo nutup test    # verify NUT and IPMI connectivity
+nutup update       # pull latest changes and restart
+nutup test         # verify NUT and IPMI connectivity
+nutup wake proxmox # manually wake a machine
+nutup status       # show UPS and machine status
 ```
 
 See [Installation](#installation) and [Configuration](#configuration) below for full details.
@@ -234,7 +236,7 @@ WoL must also be enabled in the machine's BIOS/UEFI settings. Some NICs also req
 IPMI requires `ipmitool` to be installed on the nut-up host. Test the credentials manually before adding to config:
 
 ```bash
-ipmitool -I lanplus -H <ipmi_host> -U <ipmi_user> -P <ipmi_pass> power status
+ipmitool -I lanplus -H <ipmi_host> -U <ipmi_user> -P <ipmi_pass> -L OPERATOR chassis power status
 ```
 
 **After editing the config, restart the daemon to pick up the changes:**
@@ -258,48 +260,40 @@ The UI and the REST API are served from the same port. API routes (`/health`, `/
 
 ---
 
-## Management CLI (`nutup`)
+## CLI Reference (`nutup`)
 
-After install, `nutup` is available system-wide for managing the deployment:
+After install, `nutup` is the single entry point for all nut-up operations. All commands auto-escalate to sudo if not already running as root.
+
+### System commands
 
 ```bash
-nutup              # show available commands (no sudo needed)
-sudo nutup install # install from the cloned repo
-sudo nutup update  # git pull + reinstall package + restart service
-sudo nutup test    # check NUT connectivity, credentials, and IPMI BMC access
-sudo nutup uninstall  # stop service, remove venv/unit (config kept)
-sudo nutup purge      # remove everything including config and repo
+nutup install    # install from the cloned repo (first-time only)
+nutup update     # git pull + reinstall package + restart service
+nutup test       # check NUT connectivity, credentials, and IPMI BMC access
+nutup uninstall  # stop service, remove venv/unit (config kept)
+nutup purge      # remove everything including config and repo
 ```
 
-`nutup` can also be run as `sudo make <target>` from the repo directory — both are equivalent.
-
----
-
-## Application CLI Reference (`nut-up`)
-
-The `nut-up` application binary (installed at `/opt/nut-up/bin/nut-up`) provides runtime commands:
+### Runtime commands
 
 ```bash
-# Start the daemon (normally handled by systemd)
-nut-up daemon [--config /etc/nut-up/config.yaml]
+# Wake a machine by name, or all machines at once
+# Calls the daemon API if running; falls back to direct wake if not
+nutup wake truenas
+nutup wake all
 
-# Check connectivity to the NUT server and any IPMI BMCs (same as nutup test)
-nut-up check
+# Show current UPS and machine status from the running daemon
+nutup status
 
 # Discover NUT slave clients via upsd, resolve their MACs from the ARP table,
 # and print ready-to-paste YAML for the machines section of config.yaml
-nut-up discover
+nutup discover
 
-# Wake a machine by name, or wake all machines
-# Calls the daemon API; falls back to direct wake if the daemon is unreachable
-nut-up wake truenas
-nut-up wake all
-
-# Show current UPS and machine status from the running daemon
-nut-up status
+# Start the daemon (normally handled by systemd, not run directly)
+nutup daemon [--config /etc/nut-up/config.yaml]
 ```
 
-All commands accept `--config <path>` to point at a non-default config file.
+All runtime commands accept `--config <path>` to point at a non-default config file.
 
 The `discover` command is useful during initial setup: it queries upsd for connected slave clients, looks up their MACs from the kernel ARP table, and does a reverse-DNS lookup for hostnames. Run it right after a slave machine has connected to upsd so its IP is in the ARP table.
 
@@ -539,16 +533,18 @@ Run `sudo nutup test` after configuring and before starting the daemon. It check
 | Symptom | Cause | Fix |
 |---|---|---|
 | Packet sent, machine doesn't wake | WoL disabled in BIOS | Enable "Wake on LAN" in BIOS/UEFI |
+| WoL disabled in OS | `ethtool <iface>` shows `Wake-on: d` | Run `ethtool -s <iface> wol g`; persist via `post-up ethtool -s <iface> wol g` in `/etc/network/interfaces` |
 | Works when run directly, not from Pi | Different subnet, broadcast blocked | Set `broadcast` to your subnet's broadcast address (e.g. `192.168.1.255`) in the machine config |
-| Works manually, not after outage | Machine NIC loses WoL capability when powered off too long | Some NICs require the host to configure WoL each boot; check NIC documentation |
+| Works on normal shutdown, not after full power loss | NIC loses standby power when AC is cut | WoL cannot work after a full power outage — use IPMI instead, or enable "Power On After AC Loss" in BIOS/UEFI |
 
 ### IPMI not working
 
 | Symptom | Cause | Fix |
 |---|---|---|
 | `ipmitool not found` | Not installed | `sudo apt install ipmitool` |
-| `ipmitool exited with code 1` | Auth failure or wrong BMC IP | Verify `ipmi_host`, `ipmi_user`, `ipmi_pass`; test with `ipmitool -I lanplus -H <host> -U <user> -P <pass> power status` |
-| Permission denied | IPMI user lacks Power User role | Assign at minimum **Operator** role in the BMC user settings |
+| `ipmitool timed out` | UDP/623 blocked or BMC LAN disabled | Check firewall allows UDP/623; verify IPMI over LAN is enabled in BMC settings |
+| `Set Session Privilege Level to ADMINISTRATOR failed` | BMC user only has Operator role | This is handled automatically — nut-up requests Operator-level sessions. If the error persists, check the user's role in the BMC. |
+| `ipmitool exited with code 1` | Auth failure or wrong BMC IP | Verify `ipmi_host`, `ipmi_user`, `ipmi_pass`; test with `ipmitool -I lanplus -H <host> -U <user> -P <pass> -L OPERATOR chassis power status` |
 
 ### NUT connection errors
 
@@ -572,6 +568,6 @@ sudo journalctl -u nut-up -n 100      # last 100 lines
 
 - **Do not use `changeme` as a credential.** The daemon refuses to start if either `api.api_key` or `web.password` is set to `changeme`. Omit the field entirely to disable the interface instead.
 - The API key is sent in plaintext over HTTP. If nut-up is exposed beyond your local network, put it behind a reverse proxy with TLS.
-- For IPMI machines, create a dedicated BMC user with **Operator** or **Power User** role only — do not use the root/Administrator account. An Operator-role account can power on/off but cannot modify BMC configuration.
+- For IPMI machines, create a dedicated BMC user with **Operator** role — do not use the root/Administrator account. nut-up explicitly requests Operator-level sessions (`-L OPERATOR`), so Administrator privileges are neither required nor used. An Operator account can power on/off but cannot modify BMC configuration.
 - The web UI and API share a port. There is no way to expose only the API without also exposing the UI; use firewall rules if you need to restrict browser access while allowing HA to reach the API.
 - API documentation endpoints (`/docs`, `/redoc`, `/openapi.json`) are disabled.

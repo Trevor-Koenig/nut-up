@@ -32,8 +32,10 @@ ruff format .
 
 # Pi deployment
 sudo ./nutup install       # first time (from repo dir)
-sudo nutup update          # git pull + reinstall + restart (from anywhere after install)
-sudo nutup test            # connectivity check: NUT auth, UPS names, IPMI BMCs
+nutup update               # git pull + reinstall + restart (auto-escalates to sudo)
+nutup test                 # connectivity check: NUT auth, UPS names, IPMI BMCs
+nutup wake truenas         # manually wake a machine (auto-escalates to sudo)
+nutup status               # show UPS and machine status from running daemon
 
 # Smoke tests
 curl http://localhost:8765/health
@@ -47,8 +49,11 @@ sudo journalctl -u nut-up -f
 ## Architecture
 
 ```
-nutup            # management CLI: install | update | test | uninstall | purge | help
+nutup            # unified CLI: all commands auto-escalate to sudo if not run as root
+                 # system: install | update | test | uninstall | purge | help (delegated to make)
+                 # runtime: daemon | discover | wake <name|all> | status (delegated to nut-up venv binary)
                  # installed to /usr/local/bin/nutup with repo path baked in by make install
+                 # unknown commands print help and exit non-zero
 nut_up/
 ├── config.py    # dataclasses + YAML load/validate/save; raises ConfigError
 ├── nut.py       # sync raw-socket NUT protocol client; raises NutError hierarchy
@@ -67,6 +72,8 @@ deploy/
 **Key design facts:**
 - `AppState` dataclass is shared between daemon and API — safe because asyncio is single-threaded
 - Wake fires only when `was_on_battery=True` and outage lasted ≥10s (debounce, hardcoded)
+- `wake_machine()` passes `-L OPERATOR` to ipmitool — avoids auth failure when BMC user lacks ADMINISTRATOR role; OPERATOR is sufficient for `chassis power on`
+- `cli.py` wake command skips daemon API attempt when `api.api_key is None` (avoids NoneType header error); falls straight through to direct wake
 - NUT client is synchronous; bridged into asyncio via `asyncio.to_thread`
 - No PyNUT, no Pydantic — minimal footprint
 - `/opt/nut-up/` venv + dedicated `nut-up` system user (no root at runtime)
