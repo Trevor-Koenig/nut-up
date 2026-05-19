@@ -26,6 +26,8 @@ class ApiConfig:
     host: str = "0.0.0.0"
     port: int = 8765
     api_key: Optional[str] = None  # None = REST API disabled
+    tls_cert: Optional[str] = None  # path to PEM cert; None = plain HTTP
+    tls_key: Optional[str] = None   # path to PEM private key
 
 
 @dataclass
@@ -93,6 +95,13 @@ def _validate(cfg: Config) -> None:
         if cfg.web.port == cfg.api.port:
             raise ConfigError("web.port must differ from api.port when set explicitly")
 
+    if bool(cfg.api.tls_cert) != bool(cfg.api.tls_key):
+        raise ConfigError("api.tls_cert and api.tls_key must both be set or both be omitted")
+    if cfg.api.tls_cert and not Path(cfg.api.tls_cert).is_file():
+        raise ConfigError(f"api.tls_cert not found: {cfg.api.tls_cert}")
+    if cfg.api.tls_key and not Path(cfg.api.tls_key).is_file():
+        raise ConfigError(f"api.tls_key not found: {cfg.api.tls_key}")
+
     # A05 — default credential guard; checked last after structural validation
     if cfg.api.api_key == "changeme":
         raise ConfigError("api.api_key must be changed from the default 'changeme'")
@@ -133,6 +142,8 @@ def load_config(path: str | Path) -> Config:
         host=_get(api_raw, "host", "0.0.0.0"),
         port=int(_get(api_raw, "port", 8765)),
         api_key=api_key_raw or None,
+        tls_cert=_get(api_raw, "tls_cert", None) or None,
+        tls_key=_get(api_raw, "tls_key", None) or None,
     )
     web_port: Optional[int] = None
     if web_port_raw is not None:
@@ -187,6 +198,11 @@ def save_config(config: Config, path: str | Path) -> None:
             "host": config.api.host,
             "port": config.api.port,
             "api_key": config.api.api_key,
+            **(
+                {"tls_cert": config.api.tls_cert, "tls_key": config.api.tls_key}
+                if config.api.tls_cert
+                else {}
+            ),
         },
         "web": {
             "username": config.web.username,

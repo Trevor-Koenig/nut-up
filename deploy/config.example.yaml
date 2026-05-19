@@ -12,6 +12,8 @@ api:
   api_key:                   # set a secret string to enable the REST API; leave blank to disable
                              # used in X-API-Key header — required for Home Assistant integration
                              # generate one: openssl rand -base64 32
+  tls_cert: /etc/nut-up/tls/cert.pem   # generated automatically by nutup install/update
+  tls_key:  /etc/nut-up/tls/key.pem    # comment both out to disable TLS (not recommended)
 
 web:
   username: "admin"

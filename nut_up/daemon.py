@@ -212,12 +212,18 @@ def run_daemon(cfg: Config) -> None:
         web_app = create_web(app_state)
         api_app.mount("/", web_app)
 
+    tls_kwargs: dict = {}
+    if cfg.api.tls_cert:
+        tls_kwargs = {"ssl_certfile": cfg.api.tls_cert, "ssl_keyfile": cfg.api.tls_key}
+        logger.info("TLS enabled — serving HTTPS on port %d", cfg.api.port)
+
     uv_cfg = uvicorn.Config(
         api_app,
         host=cfg.api.host,
         port=cfg.api.port,
         log_level="info",
         access_log=True,
+        **tls_kwargs,
     )
     server = uvicorn.Server(uv_cfg)
 
@@ -231,6 +237,7 @@ def run_daemon(cfg: Config) -> None:
             port=cfg.web.port,
             log_level="info",
             access_log=True,
+            **tls_kwargs,
         )
         servers.append(uvicorn.Server(web_uv_cfg))
         logger.info(

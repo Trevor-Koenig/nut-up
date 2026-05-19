@@ -3,6 +3,7 @@ BIN      = $(VENV)/bin/nut-up
 SVCFILE  = /etc/systemd/system/nut-up.service
 CONFDIR  = /etc/nut-up
 CONFFILE = $(CONFDIR)/config.yaml
+TLSDIR   = $(CONFDIR)/tls
 
 .PHONY: install update uninstall purge test help
 
@@ -18,12 +19,19 @@ install: ## Install nut-up (venv, systemd service, config template)
 	python3 -m venv $(VENV)
 	$(VENV)/bin/pip install --quiet --upgrade pip
 	$(VENV)/bin/pip install --quiet .
-	mkdir -p $(CONFDIR)
+	mkdir -p $(CONFDIR) $(TLSDIR)
 	[ -f $(CONFFILE) ] || cp deploy/config.example.yaml $(CONFFILE)
-	chown nut-up:nut-up $(CONFFILE)
 	chmod 640 $(CONFFILE)
+	@if [ ! -f $(TLSDIR)/cert.pem ]; then \
+	  echo "Generating self-signed TLS certificate..."; \
+	  openssl req -x509 -newkey rsa:4096 -days 3650 -nodes -quiet \
+	    -keyout $(TLSDIR)/key.pem -out $(TLSDIR)/cert.pem \
+	    -subj "/CN=$$(hostname)"; \
+	fi
+	chmod 600 $(TLSDIR)/key.pem
+	chmod 640 $(TLSDIR)/cert.pem
 	chown -R nut-up:nut-up $(CONFDIR)
-	chmod 750 $(CONFDIR)
+	chmod 750 $(CONFDIR) $(TLSDIR)
 	cp deploy/nut-up.service $(SVCFILE)
 	systemctl daemon-reload
 	systemctl enable nut-up
@@ -37,6 +45,20 @@ update: ## Pull latest changes, reinstall package, and restart the service
 	@test -x $(VENV)/bin/pip || (echo "nut-up is not installed — run: sudo make install"; exit 1)
 	git pull
 	$(VENV)/bin/pip install --quiet .
+	@if [ ! -f $(TLSDIR)/cert.pem ]; then \
+	  echo "Generating self-signed TLS certificate..."; \
+	  mkdir -p $(TLSDIR); \
+	  openssl req -x509 -newkey rsa:4096 -days 3650 -nodes -quiet \
+	    -keyout $(TLSDIR)/key.pem -out $(TLSDIR)/cert.pem \
+	    -subj "/CN=$$(hostname)"; \
+	  chown nut-up:nut-up $(TLSDIR)/key.pem $(TLSDIR)/cert.pem; \
+	  chmod 600 $(TLSDIR)/key.pem; \
+	  chmod 640 $(TLSDIR)/cert.pem; \
+	  chmod 750 $(TLSDIR); \
+	  echo "  To enable HTTPS, add to $(CONFFILE):"; \
+	  echo "    tls_cert: $(TLSDIR)/cert.pem"; \
+	  echo "    tls_key:  $(TLSDIR)/key.pem"; \
+	fi
 	sed 's|^REPO=.*|REPO="$(CURDIR)"|' nutup > /usr/local/bin/nutup
 	chmod +x /usr/local/bin/nutup
 	cp deploy/nut-up.service $(SVCFILE)
