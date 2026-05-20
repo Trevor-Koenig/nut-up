@@ -72,7 +72,8 @@ update: ## Reinstall package and restart the service (nutup update runs git pull
 	  echo "    tls_key:  $(TLSDIR)/key.pem"; \
 	fi
 	@if [ -f $(TLSDIR)/cert.pem ]; then \
-	  chown nut-up:nut-up $(TLSDIR)/cert.pem $(TLSDIR)/key.pem; \
+	  chown nut-up:nut-up $(TLSDIR) $(TLSDIR)/cert.pem $(TLSDIR)/key.pem; \
+	  chmod 750 $(TLSDIR); \
 	  chmod 640 $(TLSDIR)/cert.pem; \
 	  chmod 600 $(TLSDIR)/key.pem; \
 	fi
