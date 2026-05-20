@@ -93,7 +93,6 @@ def create_web(app_state) -> FastAPI:
             ).strftime("%H:%M:%S UTC")
 
         return {
-            "request": request,
             "ups_list": ups_list,
             "machines": machines,
             "machine_states_updated": updated,
@@ -104,12 +103,12 @@ def create_web(app_state) -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     async def dashboard(request: Request):
         _check_basic_auth(request)
-        return templates.TemplateResponse("dashboard.html", _build_context(request))
+        return templates.TemplateResponse(request, "dashboard.html", _build_context(request))
 
     @app.get("/partials/status", response_class=HTMLResponse)
     async def partial_status(request: Request):
         _check_basic_auth(request)
-        return templates.TemplateResponse("partials/status.html", _build_context(request))
+        return templates.TemplateResponse(request, "partials/status.html", _build_context(request))
 
     @app.post("/wake/{name}", response_class=HTMLResponse)
     async def wake_one(name: str, request: Request):
@@ -127,7 +126,6 @@ def create_web(app_state) -> FastAPI:
             wake_error = str(e)
 
         ctx = {
-            "request": request,
             "machine": {
                 "name": machine.name,
                 "ip": machine.ip,
@@ -136,6 +134,6 @@ def create_web(app_state) -> FastAPI:
             },
             "wake_error": wake_error,
         }
-        return templates.TemplateResponse("partials/machine_card.html", ctx)
+        return templates.TemplateResponse(request, "partials/machine_card.html", ctx)
 
     return app
