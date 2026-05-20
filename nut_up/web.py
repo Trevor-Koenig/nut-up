@@ -4,7 +4,7 @@ import hmac
 import logging
 import secrets
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import parse_qs
 
@@ -102,8 +102,8 @@ def create_web(app_state) -> FastAPI:
         updated = None
         if app_state.machine_states_updated:
             updated = datetime.fromtimestamp(
-                app_state.machine_states_updated, tz=timezone.utc
-            ).strftime("%H:%M:%S UTC")
+                app_state.machine_states_updated
+            ).astimezone().strftime("%H:%M:%S %Z")
 
         return {
             "ups_list": ups_list,
