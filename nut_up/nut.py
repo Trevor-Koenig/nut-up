@@ -3,6 +3,15 @@ from __future__ import annotations
 import socket
 
 
+def _safe_int(val: str | None) -> int | None:
+    if val is None:
+        return None
+    try:
+        return int(float(val))
+    except (ValueError, TypeError):
+        return None
+
+
 class NutError(Exception):
     pass
 
@@ -99,17 +108,30 @@ class NutClient:
         if self._ups_names:
             self._cmd(f"LOGIN {self._ups_names[0]}")
 
-    def get_all_statuses(self) -> dict[str, str]:
-        """Query ups.status for each configured UPS. Returns {ups_name: raw_status}."""
-        result: dict[str, str] = {}
+    def _get_optional_var(self, ups_name: str, var_name: str) -> str | None:
+        self._send(f"GET VAR {ups_name} {var_name}")
+        resp = self._readline()
+        if resp.startswith("ERR "):
+            return None
+        parts = resp.split('"', 2)
+        return parts[1] if len(parts) >= 2 else None
+
+    def get_all_statuses(self) -> dict[str, dict]:
+        """Query ups.status + optional metrics for each UPS. Returns {ups_name: {status, battery_charge, battery_runtime, ups_load}}."""
+        result: dict[str, dict] = {}
         for name in self._ups_names:
             self._send(f"GET VAR {name} ups.status")
             resp = self._readline()
             if resp.startswith("ERR "):
                 raise NutProtocolError(f"GET VAR {name} ups.status: {resp[4:]}")
-            # Response: VAR <ups> ups.status "<value>"
             parts = resp.split('"', 2)
-            result[name] = parts[1] if len(parts) >= 2 else resp
+            raw_status = parts[1] if len(parts) >= 2 else resp
+            result[name] = {
+                "status": raw_status,
+                "battery_charge": _safe_int(self._get_optional_var(name, "battery.charge")),
+                "battery_runtime": _safe_int(self._get_optional_var(name, "battery.runtime")),
+                "ups_load": _safe_int(self._get_optional_var(name, "ups.load")),
+            }
         return result
 
     def list_clients(self) -> list[str]:

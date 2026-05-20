@@ -4,18 +4,10 @@
     <strong>UPS: {{ ups.name }}</strong>
   </header>
   <p>
-    {% if ups.state == "ONLINE" %}
-      &#x25CF; ONLINE
-    {% elif ups.state == "ON_BATTERY" %}
-      &#x26A0; ON BATTERY
-    {% elif ups.state == "LOW_BATTERY" %}
-      &#x26A0; LOW BATTERY
-    {% elif ups.state == "RESTORING" %}
-      &#x21BA; RESTORING
-    {% else %}
-      ? UNKNOWN
-    {% endif %}
-    &nbsp;&bull;&nbsp; <code>{{ ups.raw_status }}</code>
+    <span class="nu-{{ ups.state|lower|replace('_','-') }}">&#x25CF; {{ ups.state_label }}</span>
+    {% if ups.battery_charge is not none %}<span class="nu-metric">{{ ups.battery_charge }}% battery</span>{% endif %}
+    {% if ups.ups_load is not none %}<span class="nu-metric">{{ ups.ups_load }}% load</span>{% endif %}
+    {% if ups.battery_runtime is not none %}<span class="nu-metric">{{ (ups.battery_runtime // 60) }}m remaining</span>{% endif %}
   </p>
   {% if ups.state == "RESTORING" and ups.restoring_countdown is not none %}
   <p><em>Wake in progress &mdash; machines waking in ~{{ ups.restoring_countdown }}s</em></p>

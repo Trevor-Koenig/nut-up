@@ -1,0 +1,80 @@
+:root {
+  --nu-online:      #2da44e;
+  --nu-offline:     #cf222e;
+  --nu-battery:     #bf8700;
+  --nu-low-battery: #cf222e;
+  --nu-restoring:   #0969da;
+  --nu-unknown:     var(--pico-muted-color);
+}
+
+/* Status color classes */
+.nu-online      { color: var(--nu-online); }
+.nu-offline     { color: var(--nu-offline); }
+.nu-on-battery  { color: var(--nu-battery); }
+.nu-low-battery { color: var(--nu-low-battery); }
+.nu-restoring   { color: var(--nu-restoring); }
+.nu-unknown     { color: var(--nu-unknown); }
+
+/* Metric pills */
+.nu-metric {
+  display: inline-block;
+  margin-left: 0.6rem;
+  padding: 0.1em 0.5em;
+  border-radius: 999px;
+  font-size: 0.8em;
+  background: var(--pico-card-sectioning-background-color, rgba(0,0,0,0.08));
+}
+
+/* Wake button inline */
+.nu-wake-btn {
+  margin: 0;
+}
+
+/* Login page */
+.login-card {
+  display: flex;
+  justify-content: center;
+  padding-top: 4rem;
+}
+.login-card article {
+  width: 100%;
+  max-width: 24rem;
+}
+.login-card button[type="submit"] {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+.login-card small {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+/* Toast */
+#toast {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.nu-toast {
+  margin: 0;
+  padding: 0.75rem 1.25rem;
+  border-radius: var(--pico-border-radius, 0.375rem);
+  font-size: 0.9rem;
+  animation: toast-in 0.2s ease, toast-out 0.4s ease 2.6s forwards;
+}
+
+.nu-toast-ok  { background: var(--nu-online);      color: #fff; }
+.nu-toast-err { background: var(--nu-low-battery);  color: #fff; }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(0.5rem); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes toast-out {
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(0.5rem); }
+}

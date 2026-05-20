@@ -5,16 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>nut-up</title>
   <link rel="stylesheet" href="/static/pico.min.css">
+  <link rel="stylesheet" href="/static/app.css">
   <script src="/static/htmx.min.js"></script>
 </head>
 <body>
   <header class="container">
     <nav>
       <ul><li><strong>nut-up</strong></li></ul>
+      <ul><li><a href="/logout">Log out</a></li></ul>
     </nav>
   </header>
   <main class="container">
     {% block content %}{% endblock %}
   </main>
+  <div id="toast"></div>
 </body>
 </html>

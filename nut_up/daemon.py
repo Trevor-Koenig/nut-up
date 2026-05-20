@@ -32,6 +32,9 @@ class UpsState:
     last_transition: float = field(default_factory=time.time)
     was_on_battery: bool = False
     battery_start: Optional[float] = None
+    battery_charge: Optional[int] = None
+    battery_runtime: Optional[int] = None
+    ups_load: Optional[int] = None
 
 
 @dataclass
@@ -150,12 +153,16 @@ async def _poll_loop(app: AppState) -> None:
             statuses = {}
 
         # 2. Update UPS state machine
-        for ups_name, raw in statuses.items():
+        for ups_name, data in statuses.items():
             if ups_name not in app.ups_states:
                 app.ups_states[ups_name] = UpsState()
 
             us = app.ups_states[ups_name]
+            raw = data["status"]
             us.raw_status = raw
+            us.battery_charge = data.get("battery_charge")
+            us.battery_runtime = data.get("battery_runtime")
+            us.ups_load = data.get("ups_load")
             new_state = _next_state(us, raw)
 
             if new_state is not None and new_state != us.state:
