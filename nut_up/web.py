@@ -48,6 +48,12 @@ def create_web(app_state) -> FastAPI:
         response.headers["Content-Security-Policy"] = _CSP
         return response
 
+    def _rel(request: Request, target: str) -> str:
+        # Redirect relative to the request path rather than to "/<target>", so
+        # the UI keeps working when a reverse proxy serves it under a subpath.
+        depth = request.url.path.count("/") - 1
+        return "../" * depth + target or "./"
+
     def _create_session() -> str:
         token = secrets.token_urlsafe(32)
         _sessions[token] = time.time() + _SESSION_TTL
@@ -61,10 +67,11 @@ def create_web(app_state) -> FastAPI:
         host = request.client.host if request.client else "unknown"
         logger.warning("Web session failure from %s", host)
         if request.headers.get("HX-Request"):
+            # HTMX resolves HX-Redirect against the page URL (the dashboard)
             r = Response(status_code=204)
-            r.headers["HX-Redirect"] = "/login"
+            r.headers["HX-Redirect"] = "login"
             return r
-        return RedirectResponse("/login", status_code=303)
+        return RedirectResponse(_rel(request, "login"), status_code=303)
 
     def _build_context(request: Request) -> dict:
         now = time.time()
@@ -116,7 +123,7 @@ def create_web(app_state) -> FastAPI:
     @app.get("/login", response_class=HTMLResponse)
     async def login_get(request: Request):
         if _check_session(request) is None:
-            return RedirectResponse("/", status_code=303)
+            return RedirectResponse(_rel(request, ""), status_code=303)
         return templates.TemplateResponse(request, "login.html", {"error": None})
 
     @app.post("/login")
@@ -131,8 +138,16 @@ def create_web(app_state) -> FastAPI:
             and hmac.compare_digest(password, cfg.password or "")
         ):
             token = _create_session()
-            resp = RedirectResponse("/", status_code=303)
-            resp.set_cookie("session", token, httponly=True, samesite="strict", path="/")
+            resp = RedirectResponse(_rel(request, ""), status_code=303)
+            # scheme reflects X-Forwarded-Proto when behind a trusted proxy
+            resp.set_cookie(
+                "session",
+                token,
+                httponly=True,
+                samesite="strict",
+                secure=request.url.scheme == "https",
+                path="/",
+            )
             return resp
         host = request.client.host if request.client else "unknown"
         logger.warning("Web login failure from %s", host)
@@ -144,7 +159,7 @@ def create_web(app_state) -> FastAPI:
     async def logout(request: Request):
         token = request.cookies.get("session", "")
         _sessions.pop(token, None)
-        resp = RedirectResponse("/login", status_code=303)
+        resp = RedirectResponse(_rel(request, "login"), status_code=303)
         resp.delete_cookie("session", path="/")
         return resp
 

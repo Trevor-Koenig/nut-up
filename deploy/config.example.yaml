@@ -20,7 +20,7 @@ api:
 web:
   username: "admin"
   password:                  # set a secret string to enable the browser UI; leave blank to disable
-                             # HTTP Basic Auth — generate one: openssl rand -base64 32
+                             # browser UI login — generate one: openssl rand -base64 32
   # port: 8766               # optional — run the web UI on a separate port from the API
                              # when omitted, web UI shares api.port; must differ from api.port if set
 

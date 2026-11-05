@@ -7,7 +7,7 @@
     <span class="{% if machine.online %}nu-online{% else %}nu-offline{% endif %}">
       {% if machine.online %}&#x25CF; Online{% else %}&#x25CB; Offline{% endif %}
     </span>
-    <button hx-post="/wake/{{ machine.name }}"
+    <button hx-post="wake/{{ machine.name }}"
             hx-target="#machine-{{ machine.name }}"
             class="nu-wake-btn">Wake</button>
   </div>

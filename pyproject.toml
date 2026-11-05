@@ -13,7 +13,7 @@ dependencies = [
     # to produce requirements.lock — committed and preferred over PyPI
     # resolution if present.
     "fastapi>=0.111,<0.137",
-    "uvicorn[standard]>=0.29,<0.48",
+    "uvicorn[standard]>=0.31,<0.48",  # 0.31: CIDR ranges in forwarded_allow_ips
     "jinja2>=3.1,<4",
     "click>=8.1,<9",
     "pyyaml>=6.0,<7",

@@ -62,7 +62,7 @@ nut_up/
 ├── machine.py   # async ping-based online check via asyncio subprocesses
 ├── daemon.py    # 5-state UPS state machine + poll loop (15s) + wake orchestration
 ├── api.py       # FastAPI REST: /health, /api/status, /api/wake/{name|all}; X-API-Key auth
-├── web.py       # FastAPI browser UI: /, /partials/status, /wake/{name}; HTTP Basic Auth
+├── web.py       # FastAPI browser UI: /, /login, /partials/status, /wake/{name}; session-cookie login
 ├── templates/   # base.html, dashboard.html; partials/status.html, partials/machine_card.html
 └── cli.py       # click entry point: daemon | discover | wake | status | check
 deploy/
@@ -88,6 +88,7 @@ deploy/
 - `config.py` strict-validates UPS names (`^[A-Za-z0-9_.-]+$`), machine `ip`/`broadcast` via `ipaddress.ip_address`, and `ipmi_host` against a hostname regex that forbids a leading `-`; rationale is to keep these values un-injectable into the line-based NUT protocol and into argv for `ping`/`ipmitool`
 - `machine.py` passes `--` before `ip` to `ping` as defence-in-depth against argv-flag injection
 - Supply chain: `pyproject.toml` caps direct deps with upper bounds; `make install` / `make update` prefer `requirements.lock` (committed) over PyPI resolution when present; `make lock` (a.k.a. `nutup lock`) regenerates it from the installed venv. Pico CSS and HTMX are vendored in [nut_up/static/](nut_up/static/) — to bump either, `curl` the new file in place; no SRI hash to recompute (the asset is same-origin so SRI is omitted)
+- Reverse-proxy friendly with zero config: `daemon._TRUSTED_PROXY_NETS` (private ranges) is passed to uvicorn as `forwarded_allow_ips` (CIDR needs uvicorn ≥0.31), so `request.client` / `request.url.scheme` reflect `X-Forwarded-For` / `-Proto`; the `FORWARDED_ALLOW_IPS` env var overrides. The session cookie's `Secure` flag follows the scheme. Templates and redirects use relative URLs (`web._rel`) so prefix-stripping subpath proxies work — don't add root-absolute `/...` URLs to templates
 - `nut.py._cmd` echoes only the protocol verb (not the full command) in `NutProtocolError`, so a non-auth `ERR` after `PASSWORD <secret>` cannot leak the secret into the journal
 
 See [.claude/starting-plan.md](.claude/starting-plan.md) for full module specs, config schema, API response shapes, and HTMX wiring.

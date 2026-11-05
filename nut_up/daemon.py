@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -15,6 +16,21 @@ from .nut import NutClient, NutConnectionError, NutError
 from .wake import WakeError, wake_machine
 
 logger = logging.getLogger("nut_up")
+
+# Honour X-Forwarded-For / X-Forwarded-Proto from any private-network peer so a
+# reverse proxy on another LAN host (NPM, Traefik, Caddy, ...) works with no
+# config. Client IP is only used for logging and scheme only for the cookie's
+# Secure flag, so a LAN host forging these headers can only affect itself.
+# FORWARDED_ALLOW_IPS (uvicorn's env var) overrides, e.g. for a public proxy.
+_TRUSTED_PROXY_NETS = [
+    "127.0.0.0/8",
+    "10.0.0.0/8",
+    "172.16.0.0/12",
+    "192.168.0.0/16",
+    "100.64.0.0/10",  # CGNAT / Tailscale
+    "::1/128",
+    "fc00::/7",
+]
 
 
 class UpsStateEnum(Enum):
@@ -219,9 +235,12 @@ def run_daemon(cfg: Config) -> None:
         web_app = create_web(app_state)
         api_app.mount("/", web_app)
 
-    tls_kwargs: dict = {}
+    server_kwargs: dict = {
+        "forwarded_allow_ips": os.environ.get("FORWARDED_ALLOW_IPS") or _TRUSTED_PROXY_NETS,
+    }
     if cfg.api.tls_cert:
-        tls_kwargs = {"ssl_certfile": cfg.api.tls_cert, "ssl_keyfile": cfg.api.tls_key}
+        server_kwargs["ssl_certfile"] = cfg.api.tls_cert
+        server_kwargs["ssl_keyfile"] = cfg.api.tls_key
         logger.info("TLS enabled — serving HTTPS on port %d", cfg.api.port)
 
     uv_cfg = uvicorn.Config(
@@ -230,7 +249,7 @@ def run_daemon(cfg: Config) -> None:
         port=cfg.api.port,
         log_level="info",
         access_log=True,
-        **tls_kwargs,
+        **server_kwargs,
     )
     server = uvicorn.Server(uv_cfg)
 
@@ -244,7 +263,7 @@ def run_daemon(cfg: Config) -> None:
             port=cfg.web.port,
             log_level="info",
             access_log=True,
-            **tls_kwargs,
+            **server_kwargs,
         )
         servers.append(uvicorn.Server(web_uv_cfg))
         logger.info(

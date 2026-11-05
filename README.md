@@ -149,7 +149,7 @@ api:
                            # generate one: openssl rand -base64 32
 
 web:
-  username: "admin"        # HTTP Basic Auth for the browser UI
+  username: "admin"        # login for the browser UI
   password:                # set a secret string to enable the browser UI; leave blank to disable
                            # generate one: openssl rand -base64 32
   # port: 8766             # optional — serve the web UI on a separate port from the API
@@ -191,8 +191,8 @@ machines:
 | `api.host` | string | `0.0.0.0` | Bind address for the HTTP server |
 | `api.port` | integer | `8765` | HTTP port |
 | `api.api_key` | string | `null` | `X-API-Key` value for REST API auth. Omit or set to `null` to disable the REST API. Must not be `changeme`. |
-| `web.username` | string | `admin` | HTTP Basic Auth username for the browser UI |
-| `web.password` | string | `null` | HTTP Basic Auth password for the browser UI. Omit or set to `null` to disable the web UI. Must not be `changeme`. |
+| `web.username` | string | `admin` | Login username for the browser UI |
+| `web.password` | string | `null` | Login password for the browser UI. Omit or set to `null` to disable the web UI. Must not be `changeme`. |
 | `web.port` | integer | `null` | Port for the browser UI. When omitted, the web UI shares `api.port`. When set, a separate server is started on this port. Must differ from `api.port`. |
 | `wake_delay_seconds` | integer | `30` | Seconds to wait after power restore before sending wake signals |
 | `machines[].name` | string | — | **Required.** Identifier used in API URLs, logs, and the UI |
@@ -253,7 +253,7 @@ sudo systemctl restart nut-up
 
 ## Web UI
 
-The browser dashboard requires HTTP Basic Auth (the credentials from `web.username` / `web.password`).
+The browser dashboard requires logging in with `web.username` / `web.password`; the session lasts 24 hours.
 
 It shows:
 - Current state and raw NUT status for each configured UPS
@@ -261,6 +261,14 @@ It shows:
 - A **Wake** button per machine that sends the wake signal immediately and updates the card in place
 
 By default, the web UI and REST API share `api.port` (default `8765`). Set `web.port` in the config to run the web UI on its own port — when configured this way, a separate server is started and API routes are not accessible on the web port.
+
+### Behind a reverse proxy
+
+Works behind Nginx Proxy Manager, Traefik, Caddy, etc. with no nut-up config:
+
+- `X-Forwarded-For` / `X-Forwarded-Proto` are trusted from any private-network address (`127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10`, `::1`, `fc00::/7`), so logs show the real client IP and the session cookie is marked `Secure` when the proxy serves HTTPS. If your proxy has a public IP, set `FORWARDED_ALLOW_IPS=<proxy-ip>` in the systemd unit.
+- TLS is on by default, so point the proxy at `https://<pi-ip>:8765`. The certificate is self-signed: NPM doesn't verify upstream certificates, but Traefik and Caddy do — either skip verification for this backend or comment out `api.tls_cert` / `api.tls_key` and let the proxy handle TLS.
+- UI links are relative, so serving it under a subpath also works if the proxy strips the prefix (e.g. Caddy `handle_path /nut-up/*`). Open it with the trailing slash: `/nut-up/`.
 
 ---
 
