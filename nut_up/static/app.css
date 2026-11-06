@@ -25,10 +25,11 @@
   background: var(--pico-card-sectioning-background-color, rgba(0,0,0,0.08));
 }
 
-/* Wake button inline */
-.nu-wake-btn {
-  margin: 0;
-}
+/* Dashboard layout (CSP blocks inline style attributes, so they live here) */
+.nu-actions { margin-bottom: 1rem; }
+.nu-ip      { float: right; font-weight: normal; color: var(--pico-muted-color); }
+.nu-row     { display: flex; justify-content: space-between; align-items: center; }
+.nu-wake-btn { margin: 0; }
 
 /* Login page */
 .login-card {

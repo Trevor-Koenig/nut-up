@@ -38,14 +38,15 @@ nut-up polls the NUT `upsd` daemon every 15 seconds and drives a per-UPS state m
 UNKNOWN ──► ONLINE ──► ON_BATTERY ──► LOW_BATTERY
                 ▲            │               │
                 │            └───────────────┘
-                │         (power restored, ≥10s elapsed)
+                │             (power restored)
                 └────── RESTORING ◄────────────────────
+                 (woken)   │ (power fails again → back to ON_BATTERY)
 ```
 
-- **Debounce:** the transition to `RESTORING` only fires if the UPS was on battery for at least 10 seconds, ignoring sub-10s flickers that don't cause machines to shut down.
-- **Wake delay:** once power is restored, nut-up waits `wake_delay_seconds` (default 30) before sending wake signals, giving the UPS time to stabilize.
-- **Wake trigger:** wake signals are sent only if `was_on_battery` is true, preventing spurious wakes on daemon restart.
-- **Wake methods:** WoL magic packets via `wakeonlan` library, or IPMI power-on via `ipmitool` subprocess. Both can be mixed in the same config.
+- **Outage detection:** any poll that sees the UPS on battery counts as an outage; the next poll that sees mains power enters `RESTORING`.
+- **Wake delay:** once power is restored, nut-up waits `wake_delay_seconds` (default 30) before sending wake signals, giving the UPS time to stabilize. If power fails again during the delay, the wake is cancelled, so machines are never woken onto battery.
+- **Wake trigger:** only a battery → mains transition seen by the running daemon triggers a wake, so restarting the daemon never causes spurious wakes. Each UPS has its own wake sequence; a machine with `ups:` set is woken only by that UPS.
+- **Wake methods:** WoL magic packets (UDP broadcast to port 9), or IPMI power-on via `ipmitool` subprocess. Both can be mixed in the same config.
 
 ---
 
@@ -107,6 +108,14 @@ sudo journalctl -u nut-up -f       # watch live logs
 
 ```bash
 sudo nutup update   # pulls latest changes, reinstalls into the venv, and restarts the service
+```
+
+`update` never removes packages from the venv, so dependencies a newer version dropped stay installed (unused). To get a clean venv, reinstall — config and TLS certificate in `/etc/nut-up` are kept:
+
+```bash
+sudo nutup uninstall
+cd /path/to/nut-up && sudo ./nutup install
+sudo systemctl start nut-up
 ```
 
 ### Checking connectivity
@@ -290,8 +299,7 @@ nutup purge      # remove everything including config and repo
 ### Runtime commands
 
 ```bash
-# Wake a machine by name, or all machines at once
-# Calls the daemon API if running; falls back to direct wake if not
+# Wake a machine by name, or all machines at once (exits non-zero if any wake fails)
 nutup wake truenas
 nutup wake all
 
@@ -538,6 +546,8 @@ Run `sudo nutup test` after configuring and before starting the daemon. It check
 | Symptom | Cause | Fix |
 |---|---|---|
 | `Config error: api.api_key must be changed` | `api_key` or `web.password` is set to `changeme` | Set a real value, or remove the field to disable that interface |
+| `Config error: ...unknown key(s): ...` | A misspelled or unsupported key (e.g. `api_kye`) | Fix the spelling — unknown keys are rejected so a typo can't silently disable a feature |
+| `Config error: ...expected str, got ...` | A value YAML parsed as the wrong type — commonly an unquoted MAC (`11:22:33:44:55:66` is a YAML integer) or a numeric password | Quote the value |
 | `Config error: Config file not found` | Config doesn't exist | Run `sudo nutup install` or copy `deploy/config.example.yaml` to `/etc/nut-up/config.yaml` |
 | `Config error: invalid MAC address` | Bad MAC in config | Verify MAC with `ip link show` or your router's ARP table |
 | `Config error: invalid UPS name` | `nut.ups_names` contains whitespace or unusual characters | Use only letters, digits, `.`, `-`, `_` — these are the characters NUT itself accepts in `ups.conf` |
@@ -590,6 +600,8 @@ sudo journalctl -u nut-up -n 100      # last 100 lines
 - The API key is sent in plaintext over HTTP. If nut-up is exposed beyond your local network, put it behind a reverse proxy with TLS.
 - For IPMI machines, create a dedicated BMC user with **Operator** role — do not use the root/Administrator account. nut-up explicitly requests Operator-level sessions (`-L OPERATOR`), so Administrator privileges are neither required nor used. An Operator account can power on/off but cannot modify BMC configuration.
 - By default the web UI and API share a port. Set `web.port` to a different value to run them on separate ports — this lets you firewall the web UI independently while keeping the API accessible to Home Assistant.
-- API documentation endpoints (`/docs`, `/redoc`, `/openapi.json`) are disabled.
-- **Supply chain.** Direct dependencies in `pyproject.toml` are capped with upper bounds so a future major-version release can't land on `nutup update` without a deliberate bump. For full transitive-dep pinning, run `sudo nutup lock` once on the install host — this writes `requirements.lock` from the installed venv. Commit the file, and both `install` and `update` will prefer it over a live PyPI resolution from then on. Frontend assets (Pico CSS, HTMX) are vendored under `nut_up/static/` and served same-origin, so the dashboard renders during an internet outage and there are no third-party CDNs in the page load path.
-- **Config validation.** The config loader rejects UPS names containing whitespace or special characters, IP/broadcast values that aren't real IPs, and IPMI hostnames starting with `-`. This is defence-in-depth so that a malformed config can't smuggle extra arguments into the NUT protocol or into `ping`/`ipmitool` argv.
+- **Browser hardening.** Every response carries a strict CSP (`default-src 'self'`, no inline scripts or styles, no framing), `nosniff`, `no-referrer`, and `Cache-Control: no-store` (except static assets). Cross-site POSTs are rejected via the browser's `Sec-Fetch-Site` header — including from sibling subdomains on the same reverse proxy. HTMX runs with `eval` and script-tag execution disabled. The session cookie is `HttpOnly`, `SameSite=Strict`, and `Secure` over HTTPS.
+- **Least privilege.** The daemon runs as the `nut-up` system user inside a systemd sandbox (read-only filesystem, no home access, private `/tmp` and `/dev`, restricted syscalls and address families). Its only capability is `CAP_NET_RAW`, which `ping` needs. `/etc/nut-up` (config and TLS key) is owned by root and only readable by the daemon. Check with `systemd-analyze security nut-up`.
+- **TLS.** `nutup install` / `nutup update` create a self-signed certificate (EC P-256) and renew it when it is within 30 days of expiry. `nutup status` trusts only that certificate, not the system CA store.
+- **Supply chain.** The runtime dependency set is deliberately small — Starlette, uvicorn (with h11), Jinja2, click, PyYAML and their few transitive deps; no FastAPI/Pydantic and no compiled `uvicorn[standard]` extras. Direct dependencies in `pyproject.toml` are capped with upper bounds so a future major-version release can't land on `nutup update` without a deliberate bump, and have lower bounds that exclude known CVEs. For full transitive-dep pinning, run `sudo nutup lock` once on the install host — this writes `requirements.lock` from the installed venv. Commit the file, and both `install` and `update` will prefer it over a live PyPI resolution from then on. Frontend assets (Pico CSS, HTMX) are vendored under `nut_up/static/` and served same-origin, so the dashboard renders during an internet outage and there are no third-party CDNs in the page load path.
+- **Config validation.** The config loader rejects unknown keys, values of the wrong type, UPS and machine names containing whitespace or special characters, IP/broadcast values that aren't real IPs, and IPMI hostnames starting with `-`. This is defence-in-depth so that a malformed config can't smuggle extra arguments into the NUT protocol or into `ping`/`ipmitool` argv.

@@ -1,9 +1,9 @@
 <article id="machine-{{ machine.name }}">
   <header>
     <strong>{{ machine.name }}</strong>
-    <span style="float:right; font-weight:normal; color: var(--pico-muted-color)">{{ machine.ip }}</span>
+    <span class="nu-ip">{{ machine.ip }}</span>
   </header>
-  <div style="display:flex; justify-content:space-between; align-items:center">
+  <div class="nu-row">
     <span class="{% if machine.online %}nu-online{% else %}nu-offline{% endif %}">
       {% if machine.online %}&#x25CF; Online{% else %}&#x25CB; Offline{% endif %}
     </span>

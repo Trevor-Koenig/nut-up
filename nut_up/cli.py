@@ -2,64 +2,53 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import socket
 import ssl
-import subprocess
 import sys
-import urllib.error
 import urllib.request
 
 import click
 
-from .config import ConfigError, load_config
+from .config import Config, ConfigError, load_config
 
 DEFAULT_CONFIG = "/etc/nut-up/config.yaml"
+
+config_option = click.option(
+    "--config", default=DEFAULT_CONFIG, show_default=True, help="Path to config file"
+)
+
+
+def _load(path: str) -> Config:
+    try:
+        return load_config(path)
+    except ConfigError as e:
+        click.echo(f"Config error: {e}", err=True)
+        sys.exit(1)
 
 
 @click.group()
 def main() -> None:
-    pass
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
 
 @main.command()
-@click.option("--config", default=DEFAULT_CONFIG, show_default=True, help="Path to config file")
+@config_option
 def daemon(config: str) -> None:
     """Start the poll loop and API/web server."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
-    try:
-        cfg = load_config(config)
-    except ConfigError as e:
-        click.echo(f"Config error: {e}", err=True)
-        sys.exit(1)
-
     from .daemon import run_daemon
-    run_daemon(cfg)
+
+    run_daemon(_load(config))
 
 
 @main.command()
-@click.option("--config", default=DEFAULT_CONFIG, show_default=True, help="Path to config file")
+@config_option
 def discover(config: str) -> None:
     """Discover NUT slave clients and print ready-to-paste YAML for config machines section."""
-    try:
-        cfg = load_config(config)
-    except ConfigError as e:
-        click.echo(f"Config error: {e}", err=True)
-        sys.exit(1)
-
+    cfg = _load(config)
     from .nut import NutClient, NutError
 
     try:
-        with NutClient(
-            cfg.nut.host,
-            cfg.nut.port,
-            cfg.nut.username,
-            cfg.nut.password,
-            cfg.nut.ups_names,
-        ) as client:
+        with NutClient(cfg.nut) as client:
             client_ips = client.list_clients()
     except NutError as e:
         click.echo(f"NUT error: {e}", err=True)
@@ -86,98 +75,59 @@ def discover(config: str) -> None:
         mac = arp.get(ip, "UNKNOWN")
         try:
             hostname = socket.gethostbyaddr(ip)[0].split(".")[0]
-        except Exception:
-            octets = ip.split(".")
-            hostname = f"machine-{octets[-1]}" if octets else ip
+        except OSError:
+            hostname = f"machine-{ip.split('.')[-1]}"
 
         mac_note = "  # WARNING: not in ARP table — fill in manually" if mac == "UNKNOWN" else ""
         click.echo(f"  - name: {hostname}")
         click.echo(f"    mac: \"{mac}\"{mac_note}")
         click.echo(f"    ip: \"{ip}\"")
-        click.echo(f"    wake_method: wol")
-        click.echo(f"    # ups: ups  # tie to a specific UPS name; omit to wake on any")
+        click.echo("    wake_method: wol")
+        click.echo("    # ups: ups  # tie to a specific UPS name; omit to wake on any")
         click.echo()
 
 
 @main.command()
 @click.argument("name")
-@click.option("--config", default=DEFAULT_CONFIG, show_default=True, help="Path to config file")
+@config_option
 def wake(name: str, config: str) -> None:
-    """Wake a machine by NAME (or 'all'). Calls daemon API; falls back to direct wake."""
-    try:
-        cfg = load_config(config)
-    except ConfigError as e:
-        click.echo(f"Config error: {e}", err=True)
-        sys.exit(1)
+    """Wake a machine by NAME (or 'all')."""
+    cfg = _load(config)
+    from .wake import wake_machines
 
-    if cfg.api.api_key is not None:
-        host = "localhost" if cfg.api.host == "0.0.0.0" else cfg.api.host
-        scheme = "https" if cfg.api.tls_cert else "http"
-        base_url = f"{scheme}://{host}:{cfg.api.port}"
-        path = "/api/wake/all" if name == "all" else f"/api/wake/{name}"
-        ssl_ctx = None
-        if cfg.api.tls_cert:
-            ssl_ctx = ssl.create_default_context()
-            ssl_ctx.load_verify_locations(cfg.api.tls_cert)
-            ssl_ctx.check_hostname = False
-        try:
-            req = urllib.request.Request(
-                f"{base_url}{path}",
-                method="POST",
-                headers={"X-API-Key": cfg.api.api_key},
-            )
-            with urllib.request.urlopen(req, timeout=5, context=ssl_ctx) as resp:
-                data = json.loads(resp.read().decode())
-            click.echo(f"Wake sent via daemon: {data}")
-            return
-        except Exception as e:
-            click.echo(f"Daemon unreachable ({e}), trying direct wake...", err=True)
-
-    from .wake import WakeError, wake_machine
-
-    machines = (
-        cfg.machines if name == "all" else [m for m in cfg.machines if m.name == name]
-    )
+    machines = cfg.machines if name == "all" else [m for m in cfg.machines if m.name == name]
     if not machines:
         click.echo(f"Unknown machine: {name!r}", err=True)
         sys.exit(1)
-
-    for machine in machines:
-        try:
-            wake_machine(machine)
-            click.echo(f"Woke {machine.name} via {machine.wake_method}")
-        except WakeError as e:
-            click.echo(f"Failed to wake {machine.name}: {e}", err=True)
+    if any(wake_machines(machines, "CLI").values()):
+        sys.exit(1)
 
 
 @main.command()
-@click.option("--config", default=DEFAULT_CONFIG, show_default=True, help="Path to config file")
+@config_option
 def status(config: str) -> None:
     """Show current UPS and machine status from the running daemon."""
-    try:
-        cfg = load_config(config)
-    except ConfigError as e:
-        click.echo(f"Config error: {e}", err=True)
+    cfg = _load(config)
+    if cfg.api.api_key is None:
+        click.echo("REST API is disabled — set api.api_key to use this command", err=True)
         sys.exit(1)
 
     host = "localhost" if cfg.api.host == "0.0.0.0" else cfg.api.host
     scheme = "https" if cfg.api.tls_cert else "http"
-    base_url = f"{scheme}://{host}:{cfg.api.port}"
+    url = f"{scheme}://{host}:{cfg.api.port}/api/status"
     ssl_ctx = None
     if cfg.api.tls_cert:
-        ssl_ctx = ssl.create_default_context()
-        ssl_ctx.load_verify_locations(cfg.api.tls_cert)
+        # Trust only the daemon's own certificate (not the system CA store): with
+        # hostname checks off, any publicly-trusted cert would otherwise pass.
+        ssl_ctx = ssl.create_default_context(cafile=cfg.api.tls_cert)
         ssl_ctx.check_hostname = False
 
     try:
-        req = urllib.request.Request(
-            f"{base_url}/api/status",
-            headers={"X-API-Key": cfg.api.api_key},
-        )
+        req = urllib.request.Request(url, headers={"X-API-Key": cfg.api.api_key})
         with urllib.request.urlopen(req, timeout=5, context=ssl_ctx) as resp:
             data = json.loads(resp.read().decode())
     except Exception as e:
-        click.echo(f"Cannot reach daemon at {base_url}: {e}", err=True)
+        click.echo(f"Cannot reach daemon at {url}: {e}", err=True)
         sys.exit(1)
 
     click.echo("\n=== UPS Status ===")
@@ -202,81 +152,43 @@ def status(config: str) -> None:
 
 
 @main.command()
-@click.option("--config", default=DEFAULT_CONFIG, show_default=True, help="Path to config file")
+@config_option
 def check(config: str) -> None:
     """Check NUT server connectivity, credentials, and IPMI BMC access."""
+    click.echo("Checking configuration...")
+    cfg = _load(config)
+    click.echo(f"  {config}  OK")
     all_ok = True
 
-    click.echo("Checking configuration...")
-    try:
-        cfg = load_config(config)
-        click.echo(f"  {config}  OK")
-    except ConfigError as e:
-        click.echo(f"  {e}  FAIL", err=True)
-        sys.exit(1)
-
     click.echo(f"\nChecking NUT server ({cfg.nut.host}:{cfg.nut.port})...")
-    from .nut import NutAuthError, NutClient, NutConnectionError, NutError
+    from .nut import NutClient, NutError
 
     try:
-        with NutClient(
-            cfg.nut.host,
-            cfg.nut.port,
-            cfg.nut.username,
-            cfg.nut.password,
-            cfg.nut.ups_names,
-        ) as client:
+        with NutClient(cfg.nut) as client:
             statuses = client.get_all_statuses()
-        for ups_name, raw_status in statuses.items():
-            click.echo(f"  {ups_name}: {raw_status!r}  OK")
-    except NutAuthError as e:
-        click.echo(f"  Auth failed: {e}  FAIL", err=True)
-        all_ok = False
-    except NutConnectionError as e:
-        click.echo(f"  Connection failed: {e}  FAIL", err=True)
-        all_ok = False
+        for ups_name, data in statuses.items():
+            click.echo(f"  {ups_name}: {data['status']!r}  OK")
     except NutError as e:
-        click.echo(f"  NUT error: {e}  FAIL", err=True)
+        click.echo(f"  {e}  FAIL", err=True)
         all_ok = False
 
     if cfg.machines:
+        from .wake import WakeError, ipmitool
+
         click.echo("\nChecking machines...")
         for m in cfg.machines:
-            if m.wake_method == "ipmi":
-                click.echo(f"  {m.name} (ipmi) — querying chassis power status...")
-                cmd = [
-                    "ipmitool", "-I", "lanplus",
-                    "-H", m.ipmi_host,
-                    "-U", m.ipmi_user,
-                    "-E",
-                    "-L", "OPERATOR",
-                    "chassis", "power", "status",
-                ]
-                env = {**os.environ, "IPMI_PASSWORD": m.ipmi_pass}
-                try:
-                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=15, env=env)
-                    if result.returncode == 0:
-                        click.echo(f"    {result.stdout.strip()}  OK")
-                    else:
-                        click.echo(
-                            f"    exit {result.returncode}: {result.stderr.strip()}  FAIL",
-                            err=True,
-                        )
-                        all_ok = False
-                except FileNotFoundError:
-                    click.echo(
-                        "    ipmitool not found — run: apt install ipmitool  FAIL", err=True
-                    )
-                    all_ok = False
-                except subprocess.TimeoutExpired:
-                    click.echo("    ipmitool timed out  FAIL", err=True)
-                    all_ok = False
-            else:
+            if m.wake_method != "ipmi":
                 click.echo(f"  {m.name} (wol) — WoL is fire-and-forget, no pre-flight check")
+                continue
+            click.echo(f"  {m.name} (ipmi) — querying chassis power status...")
+            try:
+                click.echo(f"    {ipmitool(m, 'chassis', 'power', 'status')}  OK")
+            except WakeError as e:
+                click.echo(f"    {e}  FAIL", err=True)
+                all_ok = False
 
     click.echo()
-    if all_ok:
-        click.echo("All checks passed.")
-    else:
+    if not all_ok:
         click.echo("Some checks failed.", err=True)
         sys.exit(1)
+    click.echo("All checks passed.")

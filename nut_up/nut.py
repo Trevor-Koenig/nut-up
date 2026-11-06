@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import socket
 
+from .config import NutConfig
+
 
 def _safe_int(val: str | None) -> int | None:
     if val is None:
@@ -16,46 +18,31 @@ class NutError(Exception):
     pass
 
 
-class NutAuthError(NutError):
-    pass
-
-
 class NutConnectionError(NutError):
-    pass
-
-
-class NutProtocolError(NutError):
     pass
 
 
 class NutClient:
     """Synchronous raw-socket NUT protocol client. Use as a context manager."""
 
-    def __init__(
-        self,
-        host: str,
-        port: int,
-        username: str,
-        password: str,
-        ups_names: list[str],
-    ) -> None:
-        self._host = host
-        self._port = port
-        self._username = username
-        self._password = password
-        self._ups_names = ups_names
+    def __init__(self, cfg: NutConfig) -> None:
+        self._cfg = cfg
         self._sock: socket.socket | None = None
         self._file = None
 
     def __enter__(self) -> "NutClient":
+        cfg = self._cfg
         try:
-            self._sock = socket.create_connection((self._host, self._port), timeout=5)
+            self._sock = socket.create_connection((cfg.host, cfg.port), timeout=5)
         except OSError as e:
-            raise NutConnectionError(
-                f"Cannot connect to upsd at {self._host}:{self._port}: {e}"
-            ) from e
-        self._file = self._sock.makefile("r")
-        self._authenticate()
+            raise NutConnectionError(f"Cannot connect to upsd at {cfg.host}:{cfg.port}: {e}") from e
+        # errors="replace": a misbehaving upsd must not crash the poll loop
+        self._file = self._sock.makefile("r", encoding="utf-8", errors="replace")
+        if cfg.username:
+            self._cmd(f"USERNAME {cfg.username}")
+        if cfg.password:
+            self._cmd(f"PASSWORD {cfg.password}")
+        self._cmd(f"LOGIN {cfg.ups_names[0]}")
         return self
 
     def __exit__(self, *_) -> None:
@@ -92,56 +79,39 @@ class NutClient:
         self._send(command)
         resp = self._readline()
         if resp.startswith("ERR "):
-            err = resp[4:]
-            if any(k in err for k in ("ACCESS-DENIED", "USERNAME", "PASSWORD")):
-                raise NutAuthError(f"Auth error: {err}")
             # Only echo the verb — arguments may contain the NUT password.
             verb = command.split(" ", 1)[0]
-            raise NutProtocolError(f"NUT error for {verb}: {err}")
+            raise NutError(f"NUT error for {verb}: {resp[4:]}")
         return resp
 
-    def _authenticate(self) -> None:
-        if self._username:
-            self._cmd(f"USERNAME {self._username}")
-        if self._password:
-            self._cmd(f"PASSWORD {self._password}")
-        if self._ups_names:
-            self._cmd(f"LOGIN {self._ups_names[0]}")
-
-    def _get_optional_var(self, ups_name: str, var_name: str) -> str | None:
+    def _get_var(self, ups_name: str, var_name: str, required: bool = False) -> str | None:
+        """Return the variable's value; on ERR raise if required, else return None."""
         self._send(f"GET VAR {ups_name} {var_name}")
         resp = self._readline()
         if resp.startswith("ERR "):
+            if required:
+                raise NutError(f"GET VAR {ups_name} {var_name}: {resp[4:]}")
             return None
         parts = resp.split('"', 2)
-        return parts[1] if len(parts) >= 2 else None
+        return parts[1] if len(parts) >= 2 else resp
 
     def get_all_statuses(self) -> dict[str, dict]:
         """Query ups.status + optional metrics for each UPS. Returns {ups_name: {status, battery_charge, battery_runtime, ups_load}}."""
         result: dict[str, dict] = {}
-        for name in self._ups_names:
-            self._send(f"GET VAR {name} ups.status")
-            resp = self._readline()
-            if resp.startswith("ERR "):
-                raise NutProtocolError(f"GET VAR {name} ups.status: {resp[4:]}")
-            parts = resp.split('"', 2)
-            raw_status = parts[1] if len(parts) >= 2 else resp
+        for name in self._cfg.ups_names:
             result[name] = {
-                "status": raw_status,
-                "battery_charge": _safe_int(self._get_optional_var(name, "battery.charge")),
-                "battery_runtime": _safe_int(self._get_optional_var(name, "battery.runtime")),
-                "ups_load": _safe_int(self._get_optional_var(name, "ups.load")),
+                "status": self._get_var(name, "ups.status", required=True),
+                "battery_charge": _safe_int(self._get_var(name, "battery.charge")),
+                "battery_runtime": _safe_int(self._get_var(name, "battery.runtime")),
+                "ups_load": _safe_int(self._get_var(name, "ups.load")),
             }
         return result
 
     def list_clients(self) -> list[str]:
         """Return IPs of currently connected upsmon slaves across all configured UPS devices."""
         seen: dict[str, None] = {}
-        for name in self._ups_names:
-            self._send(f"LIST CLIENT {name}")
-            header = self._readline()
-            if header.startswith("ERR "):
-                raise NutProtocolError(f"LIST CLIENT {name}: {header[4:]}")
+        for name in self._cfg.ups_names:
+            self._cmd(f"LIST CLIENT {name}")
             while True:
                 line = self._readline()
                 if line.startswith("END LIST CLIENT"):

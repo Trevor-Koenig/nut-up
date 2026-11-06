@@ -10,9 +10,31 @@ Group=nut-up
 ExecStart=/opt/nut-up/bin/nut-up daemon
 Restart=on-failure
 RestartSec=10
-StandardOutput=journal
-StandardError=journal
 SyslogIdentifier=nut-up
+
+# Sandboxing. The options below imply NoNewPrivileges, under which ping's file
+# capability is ignored — so CAP_NET_RAW is granted as the one ambient capability.
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectProc=invisible
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+UMask=0077
 
 [Install]
 WantedBy=multi-user.target

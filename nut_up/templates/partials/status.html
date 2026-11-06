@@ -4,7 +4,7 @@
     <strong>UPS: {{ ups.name }}</strong>
   </header>
   <p>
-    <span class="nu-{{ ups.state|lower|replace('_','-') }}">&#x25CF; {{ ups.state_label }}</span>
+    <span class="nu-{{ ups.state|lower|replace('_','-') }}">&#x25CF; {{ ups.state|replace('_',' ')|title }}</span>
     {% if ups.battery_charge is not none %}<span class="nu-metric">{{ ups.battery_charge }}% battery</span>{% endif %}
     {% if ups.ups_load is not none %}<span class="nu-metric">{{ ups.ups_load }}% load</span>{% endif %}
     {% if ups.battery_runtime is not none %}<span class="nu-metric">{{ (ups.battery_runtime // 60) }}m remaining</span>{% endif %}

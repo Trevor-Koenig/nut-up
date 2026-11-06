@@ -5,7 +5,7 @@ CONFDIR  = /etc/nut-up
 CONFFILE = $(CONFDIR)/config.yaml
 TLSDIR   = $(CONFDIR)/tls
 
-.PHONY: install update uninstall purge test lock help
+.PHONY: install update uninstall purge test lock help _deps _tls _system
 
 help: ## Show available targets
 	@echo "Usage: nutup <command>  |  sudo make <target>"
@@ -18,71 +18,49 @@ install: ## Install nut-up (venv, systemd service, config template)
 	id -u nut-up >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin nut-up
 	python3 -m venv $(VENV)
 	$(VENV)/bin/pip install --quiet --upgrade pip
-	@if [ -f requirements.lock ]; then \
-	  echo "Installing pinned dependencies from requirements.lock..."; \
-	  $(VENV)/bin/pip install --quiet -r requirements.lock; \
-	  $(VENV)/bin/pip install --quiet --no-deps .; \
-	else \
-	  $(VENV)/bin/pip install --quiet .; \
-	fi
-	mkdir -p $(CONFDIR) $(TLSDIR)
+	mkdir -p $(CONFDIR)
 	[ -f $(CONFFILE) ] || cp deploy/config.example.yaml $(CONFFILE)
-	chmod 640 $(CONFFILE)
-	@if [ ! -f $(TLSDIR)/cert.pem ]; then \
-	  echo "Generating self-signed TLS certificate..."; \
-	  openssl req -x509 -newkey rsa:4096 -days 3650 -nodes -quiet \
-	    -keyout $(TLSDIR)/key.pem -out $(TLSDIR)/cert.pem \
-	    -subj "/CN=$$(hostname)"; \
-	fi
-	chmod 600 $(TLSDIR)/key.pem
-	chmod 640 $(TLSDIR)/cert.pem
-	chown -R nut-up:nut-up $(CONFDIR)
-	chmod 750 $(CONFDIR) $(TLSDIR)
-	cp deploy/nut-up.service $(SVCFILE)
-	systemctl daemon-reload
+	@$(MAKE) --no-print-directory _deps _tls _system
 	systemctl enable nut-up
-	sed 's|^REPO=.*|REPO="$(CURDIR)"|' nutup > /usr/local/bin/nutup
-	chmod +x /usr/local/bin/nutup
-	@if [ -n "$$SUDO_USER" ] && [ "$$SUDO_USER" != "root" ]; then \
-	  echo "$$SUDO_USER ALL=(nut-up) NOPASSWD: $(BIN)" > /etc/sudoers.d/nut-up-runtime; \
-	  chmod 440 /etc/sudoers.d/nut-up-runtime; \
-	fi
 	@echo ""
 	@echo "Installed. Edit $(CONFFILE) then run: sudo systemctl enable --now nut-up"
 	@echo "You can now run 'nutup <command>' from anywhere."
 
 update: ## Reinstall package and restart the service (nutup update runs git pull first)
 	@test -x $(VENV)/bin/pip || (echo "nut-up is not installed — run: sudo make install"; exit 1)
+	@$(MAKE) --no-print-directory _deps _tls _system
+	systemctl restart nut-up
+	@systemctl is-active --quiet nut-up && echo "nut-up restarted successfully" || (echo "ERROR: nut-up failed to start — check: journalctl -u nut-up -n 30"; exit 1)
+
+_deps:
 	@if [ -f requirements.lock ]; then \
 	  echo "Installing pinned dependencies from requirements.lock..."; \
-	  $(VENV)/bin/pip install --quiet -r requirements.lock; \
+	  $(VENV)/bin/pip install --quiet -r requirements.lock && \
 	  $(VENV)/bin/pip install --quiet --no-deps .; \
 	else \
 	  $(VENV)/bin/pip install --quiet .; \
 	fi
-	@if [ ! -f $(TLSDIR)/cert.pem ]; then \
+
+# Self-signed cert, (re)generated when missing or expiring within 30 days.
+_tls:
+	mkdir -p $(TLSDIR)
+	@if ! openssl x509 -checkend 2592000 -noout -in $(TLSDIR)/cert.pem >/dev/null 2>&1; then \
 	  echo "Generating self-signed TLS certificate..."; \
-	  mkdir -p $(TLSDIR); \
-	  chmod 750 $(TLSDIR); \
-	  openssl req -x509 -newkey rsa:4096 -days 3650 -nodes -quiet \
-	    -keyout $(TLSDIR)/key.pem -out $(TLSDIR)/cert.pem \
-	    -subj "/CN=$$(hostname)"; \
-	  echo "  To enable HTTPS, add to $(CONFFILE):"; \
-	  echo "    tls_cert: $(TLSDIR)/cert.pem"; \
-	  echo "    tls_key:  $(TLSDIR)/key.pem"; \
+	  umask 077; openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -days 3650 -nodes -quiet \
+	    -keyout $(TLSDIR)/key.pem -out $(TLSDIR)/cert.pem -subj "/CN=$$(hostname)" \
+	    -addext "subjectAltName=DNS:$$(hostname),DNS:localhost,IP:127.0.0.1"; \
 	fi
-	@if [ -f $(TLSDIR)/cert.pem ]; then \
-	  chown nut-up:nut-up $(TLSDIR) $(TLSDIR)/cert.pem $(TLSDIR)/key.pem; \
-	  chmod 750 $(TLSDIR); \
-	  chmod 640 $(TLSDIR)/cert.pem; \
-	  chmod 600 $(TLSDIR)/key.pem; \
-	fi
-	sed 's|^REPO=.*|REPO="$(CURDIR)"|' nutup > /usr/local/bin/nutup
-	chmod +x /usr/local/bin/nutup
+
+# Config and key are root-owned and group-readable: the daemon can read but not modify them.
+_system:
+	chown -R root:nut-up $(CONFDIR)
+	chmod 750 $(CONFDIR) $(TLSDIR)
+	chmod 640 $(CONFFILE) $(TLSDIR)/key.pem
+	chmod 644 $(TLSDIR)/cert.pem
 	cp deploy/nut-up.service $(SVCFILE)
 	systemctl daemon-reload
-	systemctl restart nut-up
-	@systemctl is-active --quiet nut-up && echo "nut-up restarted successfully" || (echo "ERROR: nut-up failed to start — check: journalctl -u nut-up -n 30"; exit 1)
+	sed 's|^REPO=.*|REPO="$(CURDIR)"|' nutup > /usr/local/bin/nutup
+	chmod +x /usr/local/bin/nutup
 	@if [ -n "$$SUDO_USER" ] && [ "$$SUDO_USER" != "root" ]; then \
 	  echo "$$SUDO_USER ALL=(nut-up) NOPASSWD: $(BIN)" > /etc/sudoers.d/nut-up-runtime; \
 	  chmod 440 /etc/sudoers.d/nut-up-runtime; \
